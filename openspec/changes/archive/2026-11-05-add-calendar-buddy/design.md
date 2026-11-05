@@ -4,7 +4,7 @@
 
 See [proposal](proposal.md) for motivation and the capability deltas under [`specs/`](specs/) for normative behavior. `homeBuddy/` is a root workspace whose [`openspec/`](../../../../openspec/) holds the cross-service contracts this design follows (`homebuddy-identity-contract`, `homebuddy-deployment`, `homebuddy-ui-family`); service repositories such as `finanzBuddy/` are listed in its `repos.txt`. It establishes the reference stack: Spring Boot 4.1.2 on Java 25 with Spring Security, JWT via jjwt, JPA, Liquibase and PostgreSQL 18; a React 19 / TypeScript 7 / Vite 8 / Tailwind 4 UI tested with Vitest and linted with oxlint, served by nginx; Docker Compose with a `production` Traefik profile. Its UI contract lives in `finanzBuddy/ui/DESIGN_SYSTEM.md` and the `ui-design-system` capability.
 
-The family uses one homeBuddy account for both services. Accounts are issued by the new `authBuddy` service ([`add-identity-service`](../../../../authBuddy/openspec/changes/add-identity-service/design.md)): RS256-signed JWTs with `iss=homebuddy-auth`, `sub` = account UUID, an `email` claim, `aud` containing `calendarbuddy` and `finanzbuddy`, and a JWKS at `/.well-known/jwks.json`.
+The family uses one homeBuddy account for both services. Accounts are issued by the new `authBuddy` service ([`add-identity-service`](../../../../../authBuddy/openspec/changes/archive/2026-11-04-add-identity-service/design.md)): RS256-signed JWTs with `iss=homebuddy-auth`, `sub` = account UUID, an `email` claim, `aud` containing `calendarbuddy` and `finanzbuddy`, and a JWKS at `/.well-known/jwks.json`.
 
 ## Goals / Non-Goals
 

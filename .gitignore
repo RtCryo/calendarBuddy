@@ -1,0 +1,19 @@
+# AI assistant tooling
+.opencode/
+.claude/
+.agents/
+
+# Local configuration and credentials
+.env
+.env.*.local
+secrets/
+*.pem
+users.csv
+
+# Build output
+calendar-api/target/
+ui/node_modules/
+ui/dist/
+ui/coverage/
+.idea/
+.vscode/

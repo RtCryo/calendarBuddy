@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: calendarbuddy-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-calendarbuddy}
+      POSTGRES_USER: ${POSTGRES_USER:-calendarbuddy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  calendar-api:
+    build: ./calendar-api
+    container_name: calendarbuddy-calendar-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-calendarbuddy}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-calendarbuddy}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      AUTH_JWKS_URI: ${AUTH_JWKS_URI:-http://auth:8080/.well-known/jwks.json}
+      AUTH_ISSUER: ${AUTH_ISSUER:-homebuddy-auth}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-calendarbuddy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - default
+      - homebuddy
+
+  ui:
+    build: ./ui
+    container_name: calendarbuddy-ui
+    depends_on:
+      calendar-api:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=homebuddy"
+      - "traefik.http.routers.calendarbuddy.rule=Host(`${CALENDAR_DOMAIN}`)"
+      - "traefik.http.routers.calendarbuddy.entrypoints=websecure"
+      - "traefik.http.routers.calendarbuddy.tls.certresolver=letsencrypt"
+      - "traefik.http.services.calendarbuddy.loadbalancer.server.port=80"
+    networks:
+      default:
+      homebuddy:
+        aliases:
+          - calendarbuddy-ui
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  traefik:
+    image: traefik:v3.7.17
+    container_name: calendarbuddy-traefik
+    profiles: [production]
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports: ["80:80", "443:443"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/letsencrypt
+    networks: [homebuddy]
+
+volumes:
+  postgres-data:
+  traefik-acme:
+
+networks:
+  homebuddy:
+    external: true
+    name: homebuddy

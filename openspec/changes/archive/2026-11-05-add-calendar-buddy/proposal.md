@@ -35,9 +35,9 @@ homeBuddy currently offers only finanzBuddy for household finances. Families als
 
 ## Dependencies
 
-- Coordinated by the root umbrella change [`establish-homebuddy-platform`](../../../../openspec/changes/establish-homebuddy-platform/proposal.md) (rollout step 3). calendarBuddy conforms to the root capabilities `homebuddy-identity-contract`, `homebuddy-deployment`, and `homebuddy-ui-family`; its own specs describe how.
-- `authBuddy` change [`add-identity-service`](../../../../authBuddy/openspec/changes/add-identity-service/proposal.md) must be deployed first: it provides registration, sign-in, and the JWKS used to verify tokens.
-- finanzBuddy change [`adopt-homebuddy-identity`](../../../../finanzBuddy/openspec/changes/adopt-homebuddy-identity/proposal.md) moves finanzBuddy to the same accounts; calendarBuddy does not depend on it technically, but the shared account promise holds only once both are live.
+- Coordinated by the root umbrella change [`establish-homebuddy-platform`](../../../../../openspec/changes/archive/2026-11-05-establish-homebuddy-platform/proposal.md) (rollout step 3). calendarBuddy conforms to the root capabilities `homebuddy-identity-contract`, `homebuddy-deployment`, and `homebuddy-ui-family`; its own specs describe how.
+- `authBuddy` change [`add-identity-service`](../../../../../authBuddy/openspec/changes/archive/2026-11-04-add-identity-service/proposal.md) must be deployed first: it provides registration, sign-in, and the JWKS used to verify tokens.
+- finanzBuddy change [`adopt-homebuddy-identity`](../../../../../finanzBuddy/openspec/changes/archive/2026-11-05-adopt-homebuddy-identity/proposal.md) moves finanzBuddy to the same accounts; calendarBuddy does not depend on it technically, but the shared account promise holds only once both are live.
 
 ## Non-goals
 

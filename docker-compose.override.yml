@@ -1,0 +1,8 @@
+# Local development ports from the homeBuddy registry. Omit this file in production.
+services:
+  postgres:
+    ports: ["5433:5432"]
+  calendar-api:
+    ports: ["8081:8080"]
+  ui:
+    ports: ["3010:80"]
