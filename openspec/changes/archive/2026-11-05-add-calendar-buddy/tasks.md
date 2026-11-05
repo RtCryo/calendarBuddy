@@ -48,5 +48,5 @@
 ## 8. Deployment and verification
 
 - [x] 8.1 Add Dockerfiles, nginx proxies for `/api/auth/` (authBuddy) and `/api/` (calendar-api), `docker-compose.yml` on the external `homebuddy` network, local override ports, and the production Traefik profile; verify `docker compose up` yields healthy services alongside running authBuddy and finanzBuddy stacks, and that one account signs in to both UIs.
-- [ ] 8.2 Add GitHub workflows for `calendar-api`, `ui`, and compose validation; verify they run green.
+- [x] 8.2 Add GitHub workflows for `calendar-api`, `ui`, and compose validation; verify they run green.
 - [x] 8.3 Run backend tests, UI tests/build/lint, and `openspec validate add-calendar-buddy --strict`; record any failure and fix it before completion.
