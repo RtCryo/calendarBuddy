@@ -2,7 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
-import { calendarApi, familyApi } from '../api/calendar'
+import { accountApi, calendarApi, familyApi } from '../api/calendar'
 import { AppRoutes } from '../App'
 import { clearSession, setSession } from '../auth/storage'
 
@@ -10,6 +10,7 @@ afterEach(() => { cleanup(); clearSession(); vi.restoreAllMocks() })
 
 function openAt(path: string) {
   setSession('token', 'family@example.com')
+  vi.spyOn(accountApi, 'get').mockResolvedValue({ email: 'family@example.com', timeZone: 'Europe/Berlin' })
   vi.spyOn(familyApi, 'list').mockResolvedValue([])
   vi.spyOn(calendarApi, 'range').mockResolvedValue([])
   render(<MemoryRouter initialEntries={[path]}><AppRoutes /></MemoryRouter>)
@@ -35,7 +36,7 @@ it('opens the calendar from the workspace root', async () => {
 
 it('shows a not-found state with a link to the calendar for unknown routes', async () => {
   openAt('/nope')
-  expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('link', { name: 'Go to Calendar' }))
   expect(await screen.findByRole('heading', { name: 'Family calendar' })).toBeInTheDocument()
 })

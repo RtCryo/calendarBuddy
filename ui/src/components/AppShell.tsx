@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { accountApi } from '../api/calendar'
+import { setAccountZone } from '../calendar/dates'
 import { getEmail } from '../auth/storage'
 import { SignOutButton } from '../auth/SignOutButton'
 
@@ -13,6 +16,14 @@ export function AppShell() {
   const { pathname } = useLocation()
   const email = getEmail()
   const link = ({ isActive }: { isActive: boolean }) => `nav-link${isActive ? ' active' : ''}`
+  // Pages convert dates in the account time zone, so they render once the API has reported it.
+  const [zoneReady, setZoneReady] = useState(false)
+  useEffect(() => {
+    let active = true
+    accountApi.get().then(account => { if (active) setAccountZone(account.timeZone) })
+      .catch(() => undefined).finally(() => { if (active) setZoneReady(true) })
+    return () => { active = false }
+  }, [])
   return <div className="app-shell">
     <aside className="sidebar">
       <NavLink to="/calendar" className="brand" aria-label="calendarBuddy home">
@@ -31,7 +42,7 @@ export function AppShell() {
           <li aria-current="page">{pageName(pathname)}</li></ol></nav>
         <div className="profile">{email && <span className="profile-email" title={email}>{email}</span>}<SignOutButton /></div>
       </header>
-      <main className="main-content"><Outlet /></main>
+      <main className="main-content">{zoneReady ? <Outlet /> : <p role="status">Loading your workspace…</p>}</main>
       <footer className="workspace-footer">calendarBuddy · Make room for what matters.</footer>
     </div>
   </div>

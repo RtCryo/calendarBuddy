@@ -12,6 +12,12 @@ export type Appointment = {
 }
 export type AppointmentInput = Omit<Appointment, 'appointmentId' | 'occurrenceDate' | 'seriesId' | 'recurring'>
 
+export type Account = { email: string; timeZone: string }
+
+export const accountApi = {
+  get: async () => (await api.get<Account>('/account')).data,
+}
+
 export const familyApi = {
   list: async () => (await api.get<Member[]>('/family-members')).data,
   create: async (member: Omit<Member, 'id'>) => (await api.post<Member>('/family-members', member)).data,

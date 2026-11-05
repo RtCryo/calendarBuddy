@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import type { Appointment, AppointmentInput } from '../api/calendar'
-import { fullDate, shift, spanOf, toInstant, toLocal } from './dates'
+import { fullDate, initials, setAccountZone, shift, spanOf, toInstant, toLocal } from './dates'
 import { applyToSeries } from './series'
 import { validate } from './validation'
 import { layoutDay } from './layout'
@@ -71,4 +71,23 @@ it('lays out overlapping appointments side by side and keeps separate groups ful
   const event = (id: number, start: string, end: string) => ({ appointmentId: id, startAt: `2026-11-03T${start}:00+01:00`, endAt: `2026-11-03T${end}:00+01:00` }) as Appointment
   const placed = layoutDay('2026-11-03', [event(1, '09:00', '11:00'), event(2, '09:30', '10:30'), event(3, '10:15', '11:30'), event(4, '13:00', '14:00')])
   expect(placed.map(item => [item.event.appointmentId, item.column, item.columns])).toEqual([[1, 0, 3], [2, 1, 3], [3, 2, 3], [4, 0, 1]])
+})
+
+it('keeps zero-length appointments visible and leaves out items ending at the day start', () => {
+  const event = (id: number, start: string, end: string) => ({ appointmentId: id, startAt: `${start}:00+01:00`, endAt: `${end}:00+01:00` }) as Appointment
+  const placed = layoutDay('2026-11-03', [event(1, '2026-11-03T09:00', '2026-11-03T09:00'), event(2, '2026-11-02T22:00', '2026-11-03T00:00')])
+  expect(placed.map(item => [item.event.appointmentId, item.start, item.end])).toEqual([[1, 540, 555]])
+})
+
+it('builds initials from whitespace-separated name parts', () => {
+  expect(initials('Susan')).toBe('S')
+  expect(initials('Jessica  Brown')).toBe('JB')
+})
+
+it('converts times in the time zone reported for the account', () => {
+  try {
+    setAccountZone('America/New_York')
+    expect(toLocal('2026-11-03T15:00:00Z')).toBe('2026-11-03T10:00')
+    expect(toInstant('2026-11-03T10:00')).toBe('2026-11-03T15:00:00.000Z')
+  } finally { setAccountZone('Europe/Berlin') }
 })

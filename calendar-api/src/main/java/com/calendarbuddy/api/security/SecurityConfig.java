@@ -53,7 +53,9 @@ public class SecurityConfig {
             @Value("${app.auth.audience}") String audience) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwksUri)
                 .jwsAlgorithm(SignatureAlgorithm.RS256).build();
-        OAuth2TokenValidator<Jwt> audienceValidator = jwt -> jwt.getAudience().contains(audience)
+        // getAudience() is null when the token has no aud claim; that token must fail as invalid, not throw.
+        OAuth2TokenValidator<Jwt> audienceValidator = jwt -> jwt.getAudience() != null
+                && jwt.getAudience().contains(audience)
                 ? OAuth2TokenValidatorResult.success()
                 : OAuth2TokenValidatorResult.failure(
                         new OAuth2Error("invalid_token", "Wrong audience", null));

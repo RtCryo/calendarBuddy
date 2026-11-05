@@ -72,19 +72,30 @@ public class FamilyMemberService {
         }
     }
 
+    /**
+     * Appointments the member is the only participant of ({@code sole}), the series among them ({@code doomed}), and
+     * every row removal deletes: sole rows plus all detached occurrences of a deleted series, which the series
+     * foreign key removes with it. Parameters: account, member, account.
+     */
+    private static final String REMOVAL_SETS = "WITH mine AS (SELECT appointment_id FROM appointment_participants"
+            + " WHERE account_id=? AND member_id=?),"
+            + " counts AS (SELECT p.appointment_id, COUNT(*) AS participant_count FROM appointment_participants p"
+            + " JOIN mine m ON m.appointment_id=p.appointment_id GROUP BY p.appointment_id),"
+            + " sole AS (SELECT appointment_id FROM counts WHERE participant_count=1),"
+            + " doomed AS (SELECT a.id FROM appointments a JOIN sole s ON s.appointment_id=a.id"
+            + " WHERE a.account_id=? AND a.series_id IS NULL),"
+            + " deleted AS (SELECT a.id, a.series_id, a.original_date, a.account_id FROM appointments a"
+            + " WHERE a.id IN (SELECT appointment_id FROM sole) OR a.series_id IN (SELECT id FROM doomed))";
+
     @Transactional(readOnly = true)
     public RemovalImpact impact(UUID accountId, long id) {
         requireMember(accountId, id);
-        return jdbc.queryForObject(
-                "WITH affected AS (SELECT appointment_id FROM appointment_participants"
-                        + " WHERE account_id=? AND member_id=?), counts AS"
-                        + " (SELECT p.appointment_id, COUNT(*) AS participant_count"
-                        + " FROM appointment_participants p JOIN affected a"
-                        + " ON a.appointment_id=p.appointment_id GROUP BY p.appointment_id)"
-                        + " SELECT COUNT(*) FILTER (WHERE participant_count=1) AS delete_count,"
-                        + " COUNT(*) FILTER (WHERE participant_count>1) AS unlink_count FROM counts",
+        return jdbc.queryForObject(REMOVAL_SETS
+                        + " SELECT (SELECT COUNT(*) FROM deleted) AS delete_count,"
+                        + " (SELECT COUNT(*) FROM counts WHERE participant_count>1"
+                        + " AND appointment_id NOT IN (SELECT id FROM deleted)) AS unlink_count",
                 (rs, row) -> new RemovalImpact(rs.getLong("delete_count"), rs.getLong("unlink_count")),
-                accountId, id);
+                accountId, id, accountId);
     }
 
     @Transactional
@@ -92,14 +103,16 @@ public class FamilyMemberService {
         FamilyMember member = requireMember(accountId, id);
         lockAccount(accountId);
         RemovalImpact impact = impact(accountId, id);
-        jdbc.update(
-                "DELETE FROM appointments WHERE account_id=? AND id IN"
-                        + " (SELECT p.appointment_id FROM appointment_participants p"
-                        + " JOIN appointment_participants target"
-                        + " ON target.appointment_id=p.appointment_id"
-                        + " WHERE target.account_id=? AND target.member_id=?"
-                        + " GROUP BY p.appointment_id HAVING COUNT(*)=1)",
-                accountId, accountId, id);
+        // A deleted detached occurrence of a surviving series becomes a skipped date; otherwise the original
+        // occurrence would reappear for the series' other participants. The series version changes with it.
+        jdbc.update(REMOVAL_SETS + ", skipped AS (INSERT INTO appointment_exdates(series_id,account_id,occurrence_date)"
+                        + " SELECT series_id, account_id, original_date FROM deleted WHERE series_id IS NOT NULL"
+                        + " AND series_id NOT IN (SELECT id FROM doomed) ON CONFLICT DO NOTHING RETURNING series_id)"
+                        + " UPDATE appointments SET version=version+1, updated_at=now()"
+                        + " WHERE account_id=? AND id IN (SELECT series_id FROM skipped)",
+                accountId, id, accountId, accountId);
+        jdbc.update(REMOVAL_SETS + " DELETE FROM appointments WHERE account_id=? AND id IN (SELECT id FROM deleted)",
+                accountId, id, accountId, accountId);
         jdbc.update("DELETE FROM appointment_participants WHERE account_id=? AND member_id=?", accountId, id);
         members.delete(member);
         members.flush();

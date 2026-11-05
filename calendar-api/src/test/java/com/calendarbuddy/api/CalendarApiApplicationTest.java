@@ -38,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 @Testcontainers
 class CalendarApiApplicationTest {
+    private static final java.time.ZoneId BERLIN = java.time.ZoneId.of("Europe/Berlin");
     @Container static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18-alpine");
 
     @DynamicPropertySource
@@ -237,28 +238,28 @@ class CalendarApiApplicationTest {
                 OffsetDateTime.parse("2026-10-25T10:00:00+01:00"),
                 OffsetDateTime.parse("2026-10-25T10:30:00+01:00"), null, null,
                 Set.of(anna), null, null);
-        var saved = calendar.create(family, timed);
+        var saved = calendar.create(family, BERLIN, timed);
         assertThat(saved.title()).isEqualTo("Dentist");
         assertThat(saved.startAt().atZone(java.time.ZoneId.of("Europe/Berlin")).getHour()).isEqualTo(10);
-        assertThat(calendar.range(family, LocalDate.parse("2026-10-25"),
+        assertThat(calendar.range(family, BERLIN, LocalDate.parse("2026-10-25"),
                 LocalDate.parse("2026-10-26"), anna)).hasSize(1);
-        assertThat(calendar.range(family, LocalDate.parse("2026-10-25"),
+        assertThat(calendar.range(family, BERLIN, LocalDate.parse("2026-10-25"),
                 LocalDate.parse("2026-10-26"), ben)).isEmpty();
-        assertThatThrownBy(() -> calendar.get(other, saved.appointmentId())).isInstanceOf(Exception.class);
-        assertThatThrownBy(() -> calendar.create(family, new AppointmentRequest("X", null, null,
+        assertThatThrownBy(() -> calendar.get(other, BERLIN, saved.appointmentId())).isInstanceOf(Exception.class);
+        assertThatThrownBy(() -> calendar.create(family, BERLIN, new AppointmentRequest("X", null, null,
                 true, null, null, LocalDate.parse("2026-11-01"), LocalDate.parse("2026-11-01"),
                 Set.of(stranger), null, null))).isInstanceOf(Exception.class);
-        var multi = calendar.create(family, new AppointmentRequest("Holiday", null, null,
+        var multi = calendar.create(family, BERLIN, new AppointmentRequest("Holiday", null, null,
                 true, null, null, LocalDate.parse("2026-11-01"), LocalDate.parse("2026-11-03"),
                 Set.of(anna, ben), null, null));
-        assertThat(calendar.range(family, LocalDate.parse("2026-11-03"),
+        assertThat(calendar.range(family, BERLIN, LocalDate.parse("2026-11-03"),
                 LocalDate.parse("2026-11-04"), null)).hasSize(1);
-        assertThatThrownBy(() -> calendar.update(family, multi.appointmentId(),
+        assertThatThrownBy(() -> calendar.update(family, BERLIN, multi.appointmentId(),
                 new AppointmentRequest("Changed", null, null, true, null, null,
                         LocalDate.parse("2026-11-01"), LocalDate.parse("2026-11-03"),
                         Set.of(anna), null, 12L), null, null)).isInstanceOf(Exception.class);
-        assertThat(calendar.get(family, multi.appointmentId()).title()).isEqualTo("Holiday");
-        assertThatThrownBy(() -> calendar.range(family, LocalDate.parse("2026-01-01"),
+        assertThat(calendar.get(family, BERLIN, multi.appointmentId()).title()).isEqualTo("Holiday");
+        assertThatThrownBy(() -> calendar.range(family, BERLIN, LocalDate.parse("2026-01-01"),
                 LocalDate.parse("2026-05-01"), null)).isInstanceOf(Exception.class);
     }
 
@@ -273,41 +274,41 @@ class CalendarApiApplicationTest {
                 OffsetDateTime.parse("2026-10-20T11:00:00+02:00"), null, null,
                 Set.of(anna), new RecurrenceRequest("WEEKLY", 1,
                         Set.of(DayOfWeek.TUESDAY, DayOfWeek.THURSDAY), null, 6), null);
-        var series = calendar.create(family, request);
-        var occurrences = calendar.range(family, LocalDate.parse("2026-10-20"),
+        var series = calendar.create(family, BERLIN, request);
+        var occurrences = calendar.range(family, BERLIN, LocalDate.parse("2026-10-20"),
                 LocalDate.parse("2026-11-11"), null);
         assertThat(occurrences).hasSize(6);
         assertThat(occurrences).allSatisfy(item -> assertThat(item.startAt()
                 .atZone(java.time.ZoneId.of("Europe/Berlin")).getHour()).isEqualTo(10));
         LocalDate movedDate = LocalDate.parse("2026-10-29");
-        var moved = calendar.update(family, series.appointmentId(), new AppointmentRequest(
+        var moved = calendar.update(family, BERLIN, series.appointmentId(), new AppointmentRequest(
                 "Lesson", null, null, false,
                 OffsetDateTime.parse("2026-10-29T17:00:00+01:00"),
                 OffsetDateTime.parse("2026-10-29T18:00:00+01:00"), null, null,
                 Set.of(ben), null, series.version()), "this", movedDate);
         assertThat(moved.seriesId()).isEqualTo(series.appointmentId());
-        assertThat(calendar.range(family, movedDate, movedDate.plusDays(1), anna)).isEmpty();
-        assertThat(calendar.range(family, movedDate, movedDate.plusDays(1), ben)).hasSize(1);
-        var current = calendar.get(family, series.appointmentId());
-        calendar.delete(family, series.appointmentId(), current.version(), "this",
+        assertThat(calendar.range(family, BERLIN, movedDate, movedDate.plusDays(1), anna)).isEmpty();
+        assertThat(calendar.range(family, BERLIN, movedDate, movedDate.plusDays(1), ben)).hasSize(1);
+        var current = calendar.get(family, BERLIN, series.appointmentId());
+        calendar.delete(family, BERLIN, series.appointmentId(), current.version(), "this",
                 LocalDate.parse("2026-11-03"));
-        assertThat(calendar.range(family, LocalDate.parse("2026-11-03"),
+        assertThat(calendar.range(family, BERLIN, LocalDate.parse("2026-11-03"),
                 LocalDate.parse("2026-11-04"), null)).isEmpty();
-        var renamed = calendar.update(family, series.appointmentId(), new AppointmentRequest(
+        var renamed = calendar.update(family, BERLIN, series.appointmentId(), new AppointmentRequest(
                 "Swim training", null, null, false, request.startAt(), request.endAt(), null, null,
                 Set.of(anna), request.recurrence(), current.version() + 1), "all", null);
-        assertThat(calendar.range(family, movedDate, movedDate.plusDays(1), ben))
+        assertThat(calendar.range(family, BERLIN, movedDate, movedDate.plusDays(1), ben))
                 .singleElement().extracting("title").isEqualTo("Lesson");
-        var rescheduled = calendar.update(family, series.appointmentId(), new AppointmentRequest(
+        var rescheduled = calendar.update(family, BERLIN, series.appointmentId(), new AppointmentRequest(
                 "Swim training", null, null, false,
                 OffsetDateTime.parse("2026-10-20T15:00:00+02:00"),
                 OffsetDateTime.parse("2026-10-20T16:00:00+02:00"), null, null,
                 Set.of(anna), request.recurrence(), renamed.version()), "all", null);
-        assertThat(calendar.range(family, movedDate, movedDate.plusDays(1), ben)).isEmpty();
-        assertThat(calendar.range(family, LocalDate.parse("2026-11-03"),
+        assertThat(calendar.range(family, BERLIN, movedDate, movedDate.plusDays(1), ben)).isEmpty();
+        assertThat(calendar.range(family, BERLIN, LocalDate.parse("2026-11-03"),
                 LocalDate.parse("2026-11-04"), anna)).hasSize(1);
-        calendar.delete(family, series.appointmentId(), rescheduled.version(), "all", null);
-        assertThat(calendar.range(family, LocalDate.parse("2026-10-20"),
+        calendar.delete(family, BERLIN, series.appointmentId(), rescheduled.version(), "all", null);
+        assertThat(calendar.range(family, BERLIN, LocalDate.parse("2026-10-20"),
                 LocalDate.parse("2026-11-11"), null)).isEmpty();
     }
 
@@ -330,6 +331,75 @@ class CalendarApiApplicationTest {
         assertThat(recurrence.expand(rule("DAILY", 1, null, null),
                 LocalDate.parse("2026-11-10"), LocalDate.parse("2026-11-11"), start, 10))
                 .contains(LocalDate.parse("2026-11-01"));
+    }
+
+    @Test
+    void memberRemovalSkipsDetachedOccurrencesAndCountsCascadedOnes() {
+        UUID family = UUID.randomUUID();
+        resolver.resolve(token(family, "detach-" + family + "@example.com"));
+        long anna = members.create(family, new MemberRequest("Anna", "coral")).id();
+        long ben = members.create(family, new MemberRequest("Ben", "teal")).id();
+        long shared = appointment(family, "Shared series", null, null);
+        jdbc.update("update appointments set recurrence_freq='DAILY', recurrence_interval=1 where id=?", shared);
+        participant(family, shared, anna);
+        participant(family, shared, ben);
+        long annaOnly = appointment(family, "Anna only", shared, "2026-11-12");
+        participant(family, annaOnly, anna);
+        long own = appointment(family, "Own series", null, null);
+        jdbc.update("update appointments set recurrence_freq='DAILY', recurrence_interval=1 where id=?", own);
+        participant(family, own, anna);
+        long joined = appointment(family, "Joined", own, "2026-11-12");
+        participant(family, joined, anna);
+        participant(family, joined, ben);
+        long sharedVersion = jdbc.queryForObject("select version from appointments where id=?", Long.class, shared);
+
+        var impact = members.impact(family, anna);
+        assertThat(impact.deleteCount()).isEqualTo(3);
+        assertThat(impact.unlinkCount()).isEqualTo(1);
+        members.remove(family, anna);
+
+        assertThat(jdbc.queryForList("select id from appointments where account_id=?", Long.class, family))
+                .containsExactly(shared);
+        assertThat(jdbc.queryForObject("select count(*) from appointment_exdates where series_id=?"
+                + " and occurrence_date=?", Long.class, shared, java.sql.Date.valueOf("2026-11-12"))).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select version from appointments where id=?", Long.class, shared))
+                .isEqualTo(sharedVersion + 1);
+        assertThat(calendar.range(family, BERLIN, LocalDate.parse("2026-11-12"), LocalDate.parse("2026-11-13"), ben))
+                .isEmpty();
+    }
+
+    @Test
+    void rangesAreHalfOpenAndKeepZeroLengthAppointments() {
+        UUID family = UUID.randomUUID();
+        resolver.resolve(token(family, "bounds-" + family + "@example.com"));
+        long anna = members.create(family, new MemberRequest("Anna", "coral")).id();
+        calendar.create(family, BERLIN, new AppointmentRequest("Late", null, null, false,
+                OffsetDateTime.parse("2026-11-08T22:00:00+01:00"), OffsetDateTime.parse("2026-11-09T00:00:00+01:00"),
+                null, null, Set.of(anna), null, null));
+        calendar.create(family, BERLIN, new AppointmentRequest("Reminder", null, null, false,
+                OffsetDateTime.parse("2026-11-09T00:00:00+01:00"), OffsetDateTime.parse("2026-11-09T00:00:00+01:00"),
+                null, null, Set.of(anna), null, null));
+        assertThat(calendar.range(family, BERLIN, LocalDate.parse("2026-11-09"), LocalDate.parse("2026-11-16"), null))
+                .extracting("title").containsExactly("Reminder");
+        assertThat(calendar.range(family, BERLIN, LocalDate.parse("2026-11-02"), LocalDate.parse("2026-11-09"), null))
+                .extracting("title").containsExactly("Late");
+    }
+
+    @Test
+    void openEndedSeriesExpandFromTheRequestedPeriod() {
+        LocalDate birthday = LocalDate.parse("1950-03-04");
+        AppointmentRecord yearly = new AppointmentRecord(1, UUID.randomUUID(), "Birthday", null, null, true,
+                null, null, birthday, birthday, "YEARLY", 1, null, null, null, null, null, 0, null, null);
+        assertThat(recurrence.expand(yearly, LocalDate.parse("2026-03-01"), LocalDate.parse("2026-04-01"),
+                birthday, 0)).containsExactly(LocalDate.parse("2026-03-04"));
+        LocalDate monday = LocalDate.parse("2020-01-06");
+        AppointmentRecord fortnightly = new AppointmentRecord(2, UUID.randomUUID(), "Training", null, null, true,
+                null, null, monday, monday, "WEEKLY", 2, "MON,THU", null, null, null, null, 0, null, null);
+        assertThat(recurrence.expand(fortnightly, LocalDate.parse("2026-11-02"), LocalDate.parse("2026-11-23"),
+                monday, 0)).containsExactly(LocalDate.parse("2026-11-02"), LocalDate.parse("2026-11-05"),
+                        LocalDate.parse("2026-11-16"), LocalDate.parse("2026-11-19"));
+        assertThat(recurrence.occursOn(fortnightly, monday, LocalDate.parse("2026-11-05"))).isTrue();
+        assertThat(recurrence.occursOn(fortnightly, monday, LocalDate.parse("2026-11-12"))).isFalse();
     }
 
     private AppointmentRecord rule(String frequency, int interval, LocalDate until, Integer count) {

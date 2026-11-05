@@ -1,6 +1,5 @@
 package com.calendarbuddy.api.appointment;
 
-import com.calendarbuddy.api.account.AccountRepository;
 import com.calendarbuddy.api.member.FamilyMemberRepository;
 import java.time.DayOfWeek;
 import java.time.Duration;
@@ -11,10 +10,13 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -25,56 +27,72 @@ import org.springframework.web.server.ResponseStatusException;
 public class AppointmentService {
     private final AppointmentRepository appointments;
     private final FamilyMemberRepository members;
-    private final AccountRepository accounts;
     private final RecurrenceEngine recurrence;
     private final JdbcTemplate jdbc;
 
     public AppointmentService(AppointmentRepository appointments, FamilyMemberRepository members,
-                              AccountRepository accounts, RecurrenceEngine recurrence, JdbcTemplate jdbc) {
+                              RecurrenceEngine recurrence, JdbcTemplate jdbc) {
         this.appointments = appointments;
         this.members = members;
-        this.accounts = accounts;
         this.recurrence = recurrence;
         this.jdbc = jdbc;
     }
 
+    /** Longest span of one appointment in days, which bounds how far before a range an occurrence can start. */
+    private static final int MAX_SPAN_DAYS = 31;
+
+    private record Candidate(AppointmentRecord row, LocalDate date, Instant start, Instant end,
+                             LocalDate startDate, LocalDate endDate, long version) {}
+
+    /**
+     * Expands the range with a fixed number of queries: one-offs near the range, the account's series, their
+     * detached occurrences and skipped dates near the range, and the participants of every candidate.
+     */
     @Transactional(readOnly = true)
-    public List<AppointmentResponse> range(UUID accountId, LocalDate from, LocalDate to, Long memberId) {
+    public List<AppointmentResponse> range(UUID accountId, ZoneId zone, LocalDate from, LocalDate to, Long memberId) {
         if (from == null || to == null || !to.isAfter(from) || ChronoUnit.DAYS.between(from, to) > 100)
             bad("Range must contain 1 to 100 days");
         if (memberId != null && !members.existsByIdAndAccountId(memberId, accountId)) notFound();
-        ZoneId zone = zone(accountId);
-        List<AppointmentRecord> rows = appointments.all(accountId);
-        List<AppointmentResponse> result = new ArrayList<>();
-        for (AppointmentRecord row : rows) {
-            if (row.seriesId() != null) continue;
-            if (row.recurrenceFreq() == null) {
-                if (overlaps(row, from, to, zone) && matchesMember(row.id(), memberId))
-                    result.add(response(row, localStart(row, zone), row.startAt(), row.endAt()));
-                continue;
-            }
+        Instant lower = from.atStartOfDay(zone).toInstant();
+        Instant upper = to.atStartOfDay(zone).toInstant();
+        LocalDate windowStart = from.minusDays(MAX_SPAN_DAYS);
+        List<Candidate> candidates = new ArrayList<>();
+        for (AppointmentRecord row : appointments.oneOffsNear(accountId, lower, upper, from, to)) {
+            Candidate item = new Candidate(row, localStart(row, zone), row.startAt(), row.endAt(),
+                    row.startDate(), row.endDate(), row.version());
+            if (overlaps(item, from, to, lower, upper)) candidates.add(item);
+        }
+        Map<Long, Map<LocalDate, AppointmentRecord>> exceptions = new HashMap<>();
+        for (AppointmentRecord row : appointments.exceptionsNear(accountId, windowStart, to, lower, upper, from))
+            exceptions.computeIfAbsent(row.seriesId(), key -> new HashMap<>()).put(row.originalDate(), row);
+        Map<Long, Set<LocalDate>> exdates = appointments.exdates(accountId, windowStart, to);
+        for (AppointmentRecord row : appointments.series(accountId)) {
             LocalDate start = localStart(row, zone);
             int span = spanDays(row, zone);
+            Map<LocalDate, AppointmentRecord> own = exceptions.getOrDefault(row.id(), Map.of());
+            Set<LocalDate> skipped = exdates.getOrDefault(row.id(), Set.of());
             for (LocalDate date : recurrence.expand(row, from, to, start, span)) {
-                if (exdated(row.id(), date)) continue;
-                AppointmentRecord exception = exception(accountId, row.id(), date);
-                if (exception != null) {
-                    if (overlaps(exception, from, to, zone) && matchesMember(exception.id(), memberId))
-                        result.add(response(exception, date, exception.startAt(), exception.endAt()));
-                } else if (matchesMember(row.id(), memberId)) {
-                    AppointmentResponse occurrence = occurrence(row, date, zone);
-                    if (overlaps(occurrence, from, to, zone)) result.add(occurrence);
-                }
+                if (skipped.contains(date)) continue;
+                AppointmentRecord exception = own.get(date);
+                Candidate item = exception != null ? detached(exception, date, row.version())
+                        : occurrence(row, date, zone);
+                if (overlaps(item, from, to, lower, upper)) candidates.add(item);
             }
             // A moved exception can overlap this range even when its original date does not.
-            for (AppointmentRecord exception : exceptions(accountId, row.id())) {
+            for (AppointmentRecord exception : own.values()) {
                 if (exception.originalDate().isBefore(from.minusDays(span))
                         || !exception.originalDate().isBefore(to)) {
-                    if (overlaps(exception, from, to, zone) && matchesMember(exception.id(), memberId))
-                        result.add(response(exception, exception.originalDate(),
-                                exception.startAt(), exception.endAt()));
+                    Candidate item = detached(exception, exception.originalDate(), row.version());
+                    if (overlaps(item, from, to, lower, upper)) candidates.add(item);
                 }
             }
+        }
+        Map<Long, List<Long>> participants = appointments.participantIds(accountId,
+                candidates.stream().map(item -> item.row().id()).collect(Collectors.toSet()));
+        List<AppointmentResponse> result = new ArrayList<>();
+        for (Candidate item : candidates) {
+            List<Long> ids = participants.getOrDefault(item.row().id(), List.of());
+            if (memberId == null || ids.contains(memberId)) result.add(response(item, ids));
         }
         result.sort(Comparator.comparing((AppointmentResponse item) -> item.allDay()
                 ? item.startDate().atStartOfDay(zone).toInstant() : item.startAt())
@@ -83,32 +101,32 @@ public class AppointmentService {
     }
 
     @Transactional(readOnly = true)
-    public AppointmentResponse get(UUID accountId, long id) {
+    public AppointmentResponse get(UUID accountId, ZoneId zone, long id) {
         AppointmentRecord row = require(accountId, id);
-        return response(row, localStart(row, zone(accountId)), row.startAt(), row.endAt());
+        return single(row, localStart(row, zone));
     }
 
     @Transactional
-    public AppointmentResponse create(UUID accountId, AppointmentRequest request) {
-        AppointmentRecord input = validated(accountId, 0, request, null, null);
+    public AppointmentResponse create(UUID accountId, ZoneId zone, AppointmentRequest request) {
+        AppointmentRecord input = validated(accountId, zone, 0, request, null, null);
         AppointmentRecord saved = appointments.insert(input);
         appointments.replaceParticipants(accountId, saved.id(), sorted(request.participantIds()));
-        return get(accountId, saved.id());
+        return get(accountId, zone, saved.id());
     }
 
     @Transactional
-    public AppointmentResponse update(UUID accountId, long id, AppointmentRequest request,
+    public AppointmentResponse update(UUID accountId, ZoneId zone, long id, AppointmentRequest request,
                                       String scope, LocalDate occurrenceDate) {
         AppointmentRecord current = require(accountId, id);
         if (request.version() == null) bad("Version is required");
         AppointmentRecord series = current.seriesId() == null ? current : require(accountId, current.seriesId());
         if (series.recurrenceFreq() != null && "this".equals(scope))
-            return updateOccurrence(accountId, series, current, occurrenceDate, request);
+            return updateOccurrence(accountId, zone, series, current, occurrenceDate, request);
         if (series.recurrenceFreq() != null && !"all".equals(scope)) bad("Choose this or all occurrences");
         if (current.seriesId() != null && !"all".equals(scope)) bad("Choose this or all occurrences");
         if (current.seriesId() != null) current = series;
         if (current.version() != request.version()) conflict();
-        AppointmentRecord input = validated(accountId, current.id(), request, null, null);
+        AppointmentRecord input = validated(accountId, zone, current.id(), request, null, null);
         boolean scheduleChanged = scheduleChanged(current, input);
         AppointmentRecord saved = appointments.update(input, request.version()).orElseThrow(() -> conflictException());
         appointments.replaceParticipants(accountId, saved.id(), sorted(request.participantIds()));
@@ -116,16 +134,16 @@ public class AppointmentService {
             jdbc.update("DELETE FROM appointments WHERE account_id=? AND series_id=?", accountId, saved.id());
             jdbc.update("DELETE FROM appointment_exdates WHERE account_id=? AND series_id=?", accountId, saved.id());
         }
-        return get(accountId, saved.id());
+        return get(accountId, zone, saved.id());
     }
 
     @Transactional
-    public void delete(UUID accountId, long id, long version, String scope, LocalDate occurrenceDate) {
+    public void delete(UUID accountId, ZoneId zone, long id, long version, String scope, LocalDate occurrenceDate) {
         AppointmentRecord current = require(accountId, id);
         AppointmentRecord series = current.seriesId() == null ? current : require(accountId, current.seriesId());
         if (series.recurrenceFreq() != null && "this".equals(scope)) {
             LocalDate date = occurrenceDate == null ? current.originalDate() : occurrenceDate;
-            checkOccurrence(accountId, series, date, version);
+            checkOccurrence(series, zone, date, version);
             jdbc.update("DELETE FROM appointments WHERE account_id=? AND series_id=? AND original_date=?",
                     accountId, series.id(), date);
             jdbc.update("INSERT INTO appointment_exdates(series_id,account_id,occurrence_date) VALUES (?,?,?)"
@@ -138,13 +156,13 @@ public class AppointmentService {
         if (!appointments.delete(accountId, series.id(), version)) conflict();
     }
 
-    private AppointmentResponse updateOccurrence(UUID accountId, AppointmentRecord series,
+    private AppointmentResponse updateOccurrence(UUID accountId, ZoneId zone, AppointmentRecord series,
                                                   AppointmentRecord current, LocalDate date,
                                                   AppointmentRequest request) {
         if (date == null) date = current.originalDate();
-        checkOccurrence(accountId, series, date, request.version());
-        AppointmentRecord input = validated(accountId, 0, request, series.id(), date);
-        AppointmentRecord existing = exception(accountId, series.id(), date);
+        checkOccurrence(series, zone, date, request.version());
+        AppointmentRecord input = validated(accountId, zone, 0, request, series.id(), date);
+        AppointmentRecord existing = appointments.exception(accountId, series.id(), date).orElse(null);
         AppointmentRecord saved;
         if (existing == null) saved = appointments.insert(input);
         else {
@@ -155,12 +173,12 @@ public class AppointmentService {
         jdbc.update("DELETE FROM appointment_exdates WHERE account_id=? AND series_id=? AND occurrence_date=?",
                 accountId, series.id(), date);
         bump(series);
-        return response(saved, date, saved.startAt(), saved.endAt());
+        return single(saved, date);
     }
 
-    private void checkOccurrence(UUID accountId, AppointmentRecord series, LocalDate date, long version) {
+    private void checkOccurrence(AppointmentRecord series, ZoneId zone, LocalDate date, long version) {
         if (series.version() != version) conflict();
-        if (date == null || !recurrence.occursOn(series, localStart(series, zone(accountId)), date)) notFound();
+        if (date == null || !recurrence.occursOn(series, localStart(series, zone), date)) notFound();
     }
 
     private void bump(AppointmentRecord series) {
@@ -169,7 +187,7 @@ public class AppointmentService {
         if (changed != 1) conflict();
     }
 
-    private AppointmentRecord validated(UUID accountId, long id, AppointmentRequest request,
+    private AppointmentRecord validated(UUID accountId, ZoneId zone, long id, AppointmentRequest request,
                                          Long seriesId, LocalDate originalDate) {
         if (request == null) bad("Appointment is required");
         String title = request.title() == null ? "" : request.title().trim();
@@ -206,7 +224,7 @@ public class AppointmentService {
             until = rule.until(); count = rule.count();
             if (until != null && count != null) bad("recurrence: choose one end");
             if (count != null && (count < 1 || count > 730)) bad("recurrence.count: 1 to 730 required");
-            LocalDate first = request.allDay() ? startDate : startAt.atZone(zone(accountId)).toLocalDate();
+            LocalDate first = request.allDay() ? startDate : startAt.atZone(zone).toLocalDate();
             if (until != null && until.isBefore(first)) bad("recurrence.until: before start");
             if ("WEEKLY".equals(freq)) {
                 Set<DayOfWeek> days = rule.weekdays() == null || rule.weekdays().isEmpty()
@@ -221,34 +239,41 @@ public class AppointmentService {
                 freq, interval, weekdays, until, count, seriesId, originalDate, 0, null, null);
     }
 
-    private AppointmentResponse occurrence(AppointmentRecord row, LocalDate date, ZoneId zone) {
+    private Candidate occurrence(AppointmentRecord row, LocalDate date, ZoneId zone) {
         if (row.allDay()) {
             long span = ChronoUnit.DAYS.between(row.startDate(), row.endDate());
-            return response(row, date, null, null, date, date.plusDays(span));
+            return new Candidate(row, date, null, null, date, date.plusDays(span), row.version());
         }
         LocalDateTime localStart = row.startAt().atZone(zone).toLocalDateTime();
         LocalDateTime localEnd = row.endAt().atZone(zone).toLocalDateTime();
         Instant start = date.atTime(localStart.toLocalTime()).atZone(zone).toInstant();
         Instant end = date.atTime(localStart.toLocalTime()).plus(Duration.between(localStart, localEnd))
                 .atZone(zone).toInstant();
-        return response(row, date, start, end);
+        return new Candidate(row, date, start, end, null, null, row.version());
     }
 
-    private AppointmentResponse response(AppointmentRecord row, LocalDate date, Instant start, Instant end) {
-        return response(row, date, start, end, row.startDate(), row.endDate());
+    /** A detached occurrence carries its own schedule and the version of its parent series. */
+    private Candidate detached(AppointmentRecord exception, LocalDate date, long seriesVersion) {
+        return new Candidate(exception, date, exception.startAt(), exception.endAt(),
+                exception.startDate(), exception.endDate(), seriesVersion);
     }
 
-    private AppointmentResponse response(AppointmentRecord row, LocalDate date, Instant start, Instant end,
-                                         LocalDate startDate, LocalDate endDate) {
+    /** Builds the response of one stored row, loading its participants and, for an exception, its series version. */
+    private AppointmentResponse single(AppointmentRecord row, LocalDate date) {
+        long version = row.seriesId() == null ? row.version() : require(row.accountId(), row.seriesId()).version();
+        return response(new Candidate(row, date, row.startAt(), row.endAt(), row.startDate(), row.endDate(), version),
+                appointments.participantIds(row.id()));
+    }
+
+    private AppointmentResponse response(Candidate item, List<Long> participantIds) {
+        AppointmentRecord row = item.row();
         RecurrenceRequest rule = row.recurrenceFreq() == null ? null : new RecurrenceRequest(
                 row.recurrenceFreq(), row.recurrenceInterval(), weekdays(row.recurrenceWeekdays()),
                 row.recurrenceUntil(), row.recurrenceCount());
         Long seriesId = row.seriesId() == null && rule != null ? Long.valueOf(row.id()) : row.seriesId();
-        long version = row.seriesId() == null ? row.version()
-                : require(row.accountId(), row.seriesId()).version();
-        return new AppointmentResponse(row.id(), date, seriesId,
+        return new AppointmentResponse(row.id(), item.date(), seriesId,
                 rule != null || row.seriesId() != null, row.title(), row.location(), row.notes(), row.allDay(),
-                start, end, startDate, endDate, appointments.participantIds(row.id()), rule, version);
+                item.start(), item.end(), item.startDate(), item.endDate(), participantIds, rule, item.version());
     }
 
     private Set<DayOfWeek> weekdays(String text) {
@@ -262,36 +287,13 @@ public class AppointmentService {
                 }).collect(java.util.stream.Collectors.toSet());
     }
 
-    private boolean overlaps(AppointmentRecord row, LocalDate from, LocalDate to, ZoneId zone) {
-        return overlaps(response(row, localStart(row, zone), row.startAt(), row.endAt()), from, to, zone);
-    }
-
-    private boolean overlaps(AppointmentResponse item, LocalDate from, LocalDate to, ZoneId zone) {
-        if (item.allDay()) return item.startDate().isBefore(to) && !item.endDate().isBefore(from);
-        Instant lower = from.atStartOfDay(zone).toInstant();
-        Instant upper = to.atStartOfDay(zone).toInstant();
-        return item.startAt().isBefore(upper) && !item.endAt().isBefore(lower);
-    }
-
-    private boolean matchesMember(long appointmentId, Long memberId) {
-        return memberId == null || appointments.participantIds(appointmentId).contains(memberId);
-    }
-
-    private boolean exdated(long seriesId, LocalDate date) {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM appointment_exdates"
-                + " WHERE series_id=? AND occurrence_date=?", Integer.class, seriesId, date);
-        return count != null && count > 0;
-    }
-
-    private AppointmentRecord exception(UUID accountId, long seriesId, LocalDate date) {
-        return appointments.all(accountId).stream()
-                .filter(row -> row.seriesId() != null && row.seriesId() == seriesId
-                        && row.originalDate().equals(date)).findFirst().orElse(null);
-    }
-
-    private List<AppointmentRecord> exceptions(UUID accountId, long seriesId) {
-        return appointments.all(accountId).stream()
-                .filter(row -> row.seriesId() != null && row.seriesId() == seriesId).toList();
+    /**
+     * Ranges are half-open: a timed item overlaps when it starts before the upper bound and ends after the lower
+     * bound, or is a zero-length item at or after the lower bound. All-day end dates are inclusive.
+     */
+    private boolean overlaps(Candidate item, LocalDate from, LocalDate to, Instant lower, Instant upper) {
+        if (item.row().allDay()) return item.startDate().isBefore(to) && !item.endDate().isBefore(from);
+        return item.start().isBefore(upper) && (item.end().isAfter(lower) || !item.start().isBefore(lower));
     }
 
     private int spanDays(AppointmentRecord row, ZoneId zone) {
@@ -328,9 +330,6 @@ public class AppointmentService {
     private List<Long> sorted(Set<Long> ids) { return ids.stream().sorted().toList(); }
     private AppointmentRecord require(UUID accountId, long id) {
         return appointments.find(accountId, id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-    }
-    private ZoneId zone(UUID accountId) {
-        return ZoneId.of(accounts.findById(accountId).orElseThrow().getTimeZone());
     }
     private void bad(String reason) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, reason); }
     private void conflict() { throw conflictException(); }

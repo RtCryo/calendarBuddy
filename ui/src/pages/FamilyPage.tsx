@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Dialog } from '../components/Dialog'
 import { calendarApi, colors, familyApi, type Member, type RemovalImpact } from '../api/calendar'
+import { add, today } from '../calendar/dates'
 
 export function FamilyPage() {
   const [members, setMembers] = useState<Member[]>([])
@@ -20,9 +21,8 @@ export function FamilyPage() {
       const next = await familyApi.list()
       setMembers(next)
       setError('')
-      const today = new Date().toISOString().slice(0, 10)
-      const end = new Date(Date.now() + 99 * 86400000).toISOString().slice(0, 10)
-      const events = await calendarApi.range(today, end)
+      const from = today()
+      const events = await calendarApi.range(from, add(from, 99))
       setCounts(Object.fromEntries(next.map(member => [member.id,
         events.filter(event => event.participantIds.includes(member.id)).length])))
     } catch { setError('Family members could not be loaded. Try again.') }

@@ -2,6 +2,8 @@ import type { Appointment } from '../api/calendar'
 import { spanOf, toLocal } from './dates'
 
 export const HOUR_HEIGHT = 62
+/** Minutes a zero-length appointment occupies in the grid so it stays visible and clickable. */
+const MIN_MINUTES = 15
 
 export const eventsOn = (events: Appointment[], day: string) => events.filter(event => {
   const [first, last] = spanOf(event)
@@ -18,8 +20,14 @@ export function layoutDay(day: string, events: Appointment[]): Placed[] {
     if (local.slice(0, 10) > day) return 1440
     return Number(local.slice(11, 13)) * 60 + Number(local.slice(14, 16))
   }
-  const sorted: Placed[] = events.map(event => ({ event, start: minutes(event.startAt), end: minutes(event.endAt), column: 0, columns: 1 }))
-    .filter(item => item.end > item.start).sort((a, b) => a.start - b.start || a.end - b.end)
+  const sorted: Placed[] = events.map(event => {
+    const start = minutes(event.startAt)
+    const end = minutes(event.endAt)
+    // A zero-length item on this day keeps a minimal slot; an item ending at this day's midnight is not on it.
+    const shown = end === start && start < 1440 && toLocal(event.startAt).slice(0, 10) === day
+      ? Math.min(start + MIN_MINUTES, 1440) : end
+    return { event, start, end: shown, column: 0, columns: 1 }
+  }).filter(item => item.end > item.start).sort((a, b) => a.start - b.start || a.end - b.end)
   const result: Placed[] = []
   let group: Placed[] = []
   let groupEnd = 0

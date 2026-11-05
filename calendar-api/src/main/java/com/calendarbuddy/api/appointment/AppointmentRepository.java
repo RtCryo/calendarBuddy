@@ -6,11 +6,19 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -20,8 +28,61 @@ public class AppointmentRepository {
 
     public AppointmentRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
-    public List<AppointmentRecord> all(UUID accountId) {
-        return jdbc.query("SELECT * FROM appointments WHERE account_id=? ORDER BY id", MAPPER, accountId);
+    /**
+     * One-off appointments that may overlap a range. The SQL bound is inclusive at the lower end; callers apply the
+     * exact half-open overlap rule.
+     */
+    public List<AppointmentRecord> oneOffsNear(UUID accountId, Instant lower, Instant upper,
+                                               LocalDate from, LocalDate to) {
+        return jdbc.query("SELECT * FROM appointments WHERE account_id=? AND series_id IS NULL"
+                + " AND recurrence_freq IS NULL AND ((NOT all_day AND start_at<? AND end_at>=?)"
+                + " OR (all_day AND start_date<? AND end_date>=?)) ORDER BY id",
+                MAPPER, accountId, sqlTime(upper), sqlTime(lower), to, from);
+    }
+
+    /** Every repeating series of an account; detached occurrences can move far from their original dates. */
+    public List<AppointmentRecord> series(UUID accountId) {
+        return jdbc.query("SELECT * FROM appointments WHERE account_id=? AND series_id IS NULL"
+                + " AND recurrence_freq IS NOT NULL ORDER BY id", MAPPER, accountId);
+    }
+
+    /** Detached occurrences whose original date lies in a window or whose own schedule may overlap a range. */
+    public List<AppointmentRecord> exceptionsNear(UUID accountId, LocalDate windowStart, LocalDate to,
+                                                  Instant lower, Instant upper, LocalDate from) {
+        return jdbc.query("SELECT * FROM appointments WHERE account_id=? AND series_id IS NOT NULL"
+                + " AND ((original_date>=? AND original_date<?)"
+                + " OR (NOT all_day AND start_at<? AND end_at>=?)"
+                + " OR (all_day AND start_date<? AND end_date>=?)) ORDER BY id",
+                MAPPER, accountId, windowStart, to, sqlTime(upper), sqlTime(lower), to, from);
+    }
+
+    public Optional<AppointmentRecord> exception(UUID accountId, long seriesId, LocalDate originalDate) {
+        return jdbc.query("SELECT * FROM appointments WHERE account_id=? AND series_id=? AND original_date=?",
+                MAPPER, accountId, seriesId, originalDate).stream().findFirst();
+    }
+
+    /** Skipped occurrence dates per series within {@code [from, to)}. */
+    public Map<Long, Set<LocalDate>> exdates(UUID accountId, LocalDate from, LocalDate to) {
+        Map<Long, Set<LocalDate>> result = new HashMap<>();
+        jdbc.query("SELECT series_id, occurrence_date FROM appointment_exdates WHERE account_id=?"
+                        + " AND occurrence_date>=? AND occurrence_date<?",
+                (RowCallbackHandler) rs -> result.computeIfAbsent(rs.getLong("series_id"), key -> new HashSet<>())
+                        .add(rs.getObject("occurrence_date", LocalDate.class)),
+                accountId, from, to);
+        return result;
+    }
+
+    /** Participant ids of several appointments in one query, each list ordered by member id. */
+    public Map<Long, List<Long>> participantIds(UUID accountId, Collection<Long> appointmentIds) {
+        Map<Long, List<Long>> result = new HashMap<>();
+        if (appointmentIds.isEmpty()) return result;
+        new NamedParameterJdbcTemplate(jdbc).query(
+                "SELECT appointment_id, member_id FROM appointment_participants WHERE account_id=:account"
+                        + " AND appointment_id IN (:ids) ORDER BY member_id",
+                Map.of("account", accountId, "ids", appointmentIds),
+                (RowCallbackHandler) rs -> result.computeIfAbsent(rs.getLong("appointment_id"),
+                        key -> new ArrayList<>()).add(rs.getLong("member_id")));
+        return result;
     }
 
     public Optional<AppointmentRecord> find(UUID accountId, long id) {

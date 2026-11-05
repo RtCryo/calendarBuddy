@@ -22,6 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidationException;
 
 class HomeBuddyJwtDecoderTest {
 
@@ -58,6 +59,8 @@ class HomeBuddyJwtDecoderTest {
             assertThatThrownBy(() -> decoder.decode(expiredToken(key)))
                     .isInstanceOf(Exception.class);
             assertThatThrownBy(() -> decoder.decode(hmacToken())).isInstanceOf(Exception.class);
+            assertThatThrownBy(() -> decoder.decode(token(key, "homebuddy-auth", null)))
+                    .isInstanceOf(JwtValidationException.class);
         } finally {
             server.stop(0);
         }

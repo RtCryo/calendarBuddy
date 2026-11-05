@@ -38,3 +38,10 @@ On the first accepted request of an account, `calendar-api` SHALL create exactly
 #### Scenario: Data isolation
 - **WHEN** two different accounts use calendarBuddy
 - **THEN** neither can read or change the other's members or appointments
+
+### Requirement: The account time zone has one source
+`GET /api/account` SHALL return the signed-in account's email and stored time zone. The API SHALL expand and validate appointments in that time zone, and the UI SHALL load it before showing calendar pages and use it for every local date and time conversion.
+
+#### Scenario: Account outside the default zone
+- **WHEN** an account's stored time zone is `America/New_York`
+- **THEN** the UI shows a 10:00 appointment at 10:00 and the API returns its occurrences on the same local dates

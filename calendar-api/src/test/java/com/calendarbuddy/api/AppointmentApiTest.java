@@ -122,6 +122,15 @@ class AppointmentApiTest {
     }
 
     @Test
+    void reportsTheAccountTimeZone() throws Exception {
+        UUID account = UUID.randomUUID();
+        assertThat(call("GET", "/api/account", null, null).status()).isEqualTo(401);
+        Reply reply = call("GET", "/api/account", account, null);
+        assertThat(reply.status()).isEqualTo(200);
+        assertThat(reply.body()).contains("\"timeZone\":\"Europe/Berlin\"").contains(account + "@example.com");
+    }
+
+    @Test
     void thisOccurrenceEditAndDeleteUseExceptionRowsAndExdates() throws Exception {
         UUID account = UUID.randomUUID();
         long ben = member(account, "Ben");

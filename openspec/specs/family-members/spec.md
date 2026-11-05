@@ -40,7 +40,7 @@ The system SHALL let an authenticated user list, add, edit, and remove only thei
 - **THEN** existing appointments of that member show the new name and color
 
 ### Requirement: Removing a member is explicit and atomic
-Before removal the system SHALL report how many appointments would be deleted because the member is their only participant and how many shared appointments would only lose this participant, counting a repeating series and each detached occurrence once. Removal SHALL apply both effects, including deleting the exceptions of deleted series, and delete the member in one transaction.
+Before removal the system SHALL report how many appointments would be deleted because the member is their only participant and how many shared appointments would only lose this participant, counting a repeating series and each detached occurrence once. Removal SHALL apply both effects, including deleting the exceptions of deleted series, and delete the member in one transaction. Exceptions of a deleted series SHALL count as deleted even when they have other participants. A deleted detached occurrence of a series that remains SHALL become a skipped date, so the original occurrence does not reappear.
 
 #### Scenario: Preview removal impact
 - **WHEN** a user requests the removal impact of a member with 3 own and 2 shared appointments
@@ -49,6 +49,10 @@ Before removal the system SHALL report how many appointments would be deleted be
 #### Scenario: Remove a member
 - **WHEN** a user confirms removal of that member
 - **THEN** the 3 own appointments are deleted, the 2 shared appointments keep their other participants, and the member no longer exists
+
+#### Scenario: Remove the only participant of a detached occurrence
+- **WHEN** a shared series has a detached occurrence whose only participant is the removed member
+- **THEN** that occurrence is deleted and skipped, and the series keeps its other occurrences
 
 #### Scenario: Removal fails
 - **WHEN** any part of the removal fails

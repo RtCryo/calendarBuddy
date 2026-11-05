@@ -1,6 +1,18 @@
 import type { Appointment, AppointmentInput } from '../api/calendar'
 
-export const ACCOUNT_ZONE = 'Europe/Berlin'
+/** Fallback until the account settings are loaded; the API stores the zone per account. */
+export const DEFAULT_ZONE = 'Europe/Berlin'
+let accountZone = DEFAULT_ZONE
+const zoneFormat = (zone: string) => new Intl.DateTimeFormat('en-CA', { timeZone: zone, hourCycle: 'h23',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+let zoneParts = zoneFormat(accountZone)
+
+/** Uses the account's time zone, as reported by the API, for every local date and time conversion. */
+export function setAccountZone(zone: string) {
+  try { zoneParts = zoneFormat(zone); accountZone = zone }
+  catch { zoneParts = zoneFormat(DEFAULT_ZONE); accountZone = DEFAULT_ZONE }
+}
+export const getAccountZone = () => accountZone
 export const weekdayNames = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] as const
 
 export const iso = (date: Date) => date.toISOString().slice(0, 10)
@@ -8,7 +20,7 @@ export const parse = (text: string) => new Date(`${text}T12:00:00Z`)
 export const add = (text: string, days: number) => { const date = parse(text); date.setUTCDate(date.getUTCDate() + days); return iso(date) }
 export const monday = (text: string) => add(text, -((parse(text).getUTCDay() + 6) % 7))
 export const weekdayOf = (text: string) => weekdayNames[(parse(text).getUTCDay() + 6) % 7]
-export const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: ACCOUNT_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
+export const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: accountZone, year: 'numeric', month: '2-digit', day: '2-digit' })
 export const display = (text: string, options: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', ...options }).format(parse(text))
 
@@ -19,9 +31,6 @@ export const fullDate = (text: string) => {
   const date = parse(text)
   return `${weekdayLong[date.getUTCDay()]}, ${date.getUTCDate()} ${monthLong[date.getUTCMonth()]} ${date.getUTCFullYear()}`
 }
-
-const zoneParts = new Intl.DateTimeFormat('en-CA', { timeZone: ACCOUNT_ZONE, hourCycle: 'h23',
-  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 function offsetAt(ms: number) {
   const parts = Object.fromEntries(zoneParts.formatToParts(new Date(ms)).map(part => [part.type, part.value]))
@@ -112,4 +121,4 @@ export function spanOf(event: Appointment): [string, string] {
   return [start.slice(0, 10), lastDay]
 }
 
-export const initials = (name: string) => name.trim().split(/s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
+export const initials = (name: string) => name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
