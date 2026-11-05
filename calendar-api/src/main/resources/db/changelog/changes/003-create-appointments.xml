@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+    <changeSet id="003-create-appointments" author="calendar-api">
+        <createTable tableName="appointments">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="account_id" type="UUID"><constraints nullable="false"/></column>
+            <column name="title" type="VARCHAR(200)"><constraints nullable="false"/></column>
+            <column name="location" type="VARCHAR(200)"/>
+            <column name="notes" type="VARCHAR(2000)"/>
+            <column name="all_day" type="BOOLEAN"><constraints nullable="false"/></column>
+            <column name="start_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="end_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="start_date" type="DATE"/>
+            <column name="end_date" type="DATE"/>
+            <column name="version" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="appointments" baseColumnNames="account_id"
+                                 referencedTableName="accounts" referencedColumnNames="id"
+                                 constraintName="fk_appointments_account" onDelete="CASCADE"/>
+        <addUniqueConstraint tableName="appointments" columnNames="id,account_id"
+                             constraintName="uk_appointments_id_account"/>
+        <addUniqueConstraint tableName="family_members" columnNames="id,account_id"
+                             constraintName="uk_family_members_id_account"/>
+        <sql>ALTER TABLE appointments ADD CONSTRAINT ck_appointments_schedule CHECK (
+            (all_day AND start_at IS NULL AND end_at IS NULL AND start_date IS NOT NULL
+             AND end_date IS NOT NULL AND end_date - start_date BETWEEN 0 AND 30)
+            OR
+            (NOT all_day AND start_date IS NULL AND end_date IS NULL AND start_at IS NOT NULL
+             AND end_at IS NOT NULL AND end_at &gt;= start_at AND end_at &lt;= start_at + INTERVAL '31 days')
+        )</sql>
+        <createIndex tableName="appointments" indexName="idx_appointments_timed_range">
+            <column name="account_id"/><column name="start_at"/><column name="end_at"/>
+        </createIndex>
+        <createIndex tableName="appointments" indexName="idx_appointments_all_day_range">
+            <column name="account_id"/><column name="start_date"/><column name="end_date"/>
+        </createIndex>
+        <createTable tableName="appointment_participants">
+            <column name="appointment_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="member_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="account_id" type="UUID"><constraints nullable="false"/></column>
+        </createTable>
+        <addPrimaryKey tableName="appointment_participants" columnNames="appointment_id,member_id"
+                       constraintName="pk_appointment_participants"/>
+        <addForeignKeyConstraint baseTableName="appointment_participants" baseColumnNames="appointment_id,account_id"
+                                 referencedTableName="appointments" referencedColumnNames="id,account_id"
+                                 constraintName="fk_participants_appointment_account" onDelete="CASCADE"/>
+        <addForeignKeyConstraint baseTableName="appointment_participants" baseColumnNames="member_id,account_id"
+                                 referencedTableName="family_members" referencedColumnNames="id,account_id"
+                                 constraintName="fk_participants_member_account" onDelete="CASCADE"/>
+        <createIndex tableName="appointment_participants" indexName="idx_participants_member">
+            <column name="account_id"/><column name="member_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="appointment_participants"/>
+            <dropTable tableName="appointments"/>
+            <dropUniqueConstraint tableName="family_members" constraintName="uk_family_members_id_account"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

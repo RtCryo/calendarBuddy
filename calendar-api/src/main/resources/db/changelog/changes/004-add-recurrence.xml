@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+    <changeSet id="004-add-recurrence" author="calendar-api">
+        <addColumn tableName="appointments">
+            <column name="recurrence_freq" type="VARCHAR(8)"/>
+            <column name="recurrence_interval" type="INTEGER"/>
+            <column name="recurrence_weekdays" type="VARCHAR(32)"/>
+            <column name="recurrence_until" type="DATE"/>
+            <column name="recurrence_count" type="INTEGER"/>
+            <column name="series_id" type="BIGINT"/>
+            <column name="original_date" type="DATE"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableName="appointments" baseColumnNames="series_id,account_id"
+                                 referencedTableName="appointments" referencedColumnNames="id,account_id"
+                                 constraintName="fk_appointments_series_account" onDelete="CASCADE"/>
+        <sql>CREATE UNIQUE INDEX uk_appointments_series_original_date ON appointments(series_id, original_date) WHERE series_id IS NOT NULL</sql>
+        <sql>ALTER TABLE appointments ADD CONSTRAINT ck_appointments_recurrence CHECK (
+            (recurrence_freq IS NULL AND recurrence_interval IS NULL AND recurrence_weekdays IS NULL
+             AND recurrence_until IS NULL AND recurrence_count IS NULL)
+            OR
+            (series_id IS NULL AND recurrence_freq IN ('DAILY','WEEKLY','MONTHLY','YEARLY')
+             AND recurrence_interval BETWEEN 1 AND 99
+             AND (recurrence_until IS NULL OR recurrence_count IS NULL)
+             AND (recurrence_count IS NULL OR recurrence_count BETWEEN 1 AND 730)
+             AND (recurrence_freq = 'WEEKLY' OR recurrence_weekdays IS NULL)
+             AND (recurrence_freq &lt;&gt; 'WEEKLY' OR recurrence_weekdays ~ '^(MON|TUE|WED|THU|FRI|SAT|SUN)(,(MON|TUE|WED|THU|FRI|SAT|SUN))*$'))
+        )</sql>
+        <sql>ALTER TABLE appointments ADD CONSTRAINT ck_appointments_exception CHECK (
+            (series_id IS NULL AND original_date IS NULL) OR
+            (series_id IS NOT NULL AND original_date IS NOT NULL)
+        )</sql>
+        <createTable tableName="appointment_exdates">
+            <column name="series_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="account_id" type="UUID"><constraints nullable="false"/></column>
+            <column name="occurrence_date" type="DATE"><constraints nullable="false"/></column>
+        </createTable>
+        <addPrimaryKey tableName="appointment_exdates" columnNames="series_id,occurrence_date"
+                       constraintName="pk_appointment_exdates"/>
+        <addForeignKeyConstraint baseTableName="appointment_exdates" baseColumnNames="series_id,account_id"
+                                 referencedTableName="appointments" referencedColumnNames="id,account_id"
+                                 constraintName="fk_exdates_series_account" onDelete="CASCADE"/>
+        <rollback>
+            <dropTable tableName="appointment_exdates"/>
+            <sql>ALTER TABLE appointments DROP CONSTRAINT ck_appointments_exception</sql>
+            <sql>ALTER TABLE appointments DROP CONSTRAINT ck_appointments_recurrence</sql>
+            <sql>DROP INDEX uk_appointments_series_original_date</sql>
+            <dropForeignKeyConstraint baseTableName="appointments" constraintName="fk_appointments_series_account"/>
+            <dropColumn tableName="appointments" columnName="recurrence_freq"/>
+            <dropColumn tableName="appointments" columnName="recurrence_interval"/>
+            <dropColumn tableName="appointments" columnName="recurrence_weekdays"/>
+            <dropColumn tableName="appointments" columnName="recurrence_until"/>
+            <dropColumn tableName="appointments" columnName="recurrence_count"/>
+            <dropColumn tableName="appointments" columnName="series_id"/>
+            <dropColumn tableName="appointments" columnName="original_date"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
