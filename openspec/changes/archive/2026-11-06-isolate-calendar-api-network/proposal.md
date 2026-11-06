@@ -2,7 +2,7 @@
 
 ## Why
 
-The root capability `homebuddy-deployment` says a product API SHALL NOT be reachable from another stack, and the root change [`isolate-product-apis`](../../../../../openspec/changes/archive/2026-11-06-isolate-product-apis/proposal.md) closes the gap. `calendar-api` still joins the shared `homebuddy` network only to fetch authBuddy's JWKS, so every container of every stack can call it directly.
+The root capability `homebuddy-deployment` says a product API SHALL NOT be reachable from another stack, and the root change [`isolate-product-apis`](https://github.com/RtCryo/homeBuddy/blob/main/openspec/changes/archive/2026-11-06-isolate-product-apis/proposal.md) closes the gap. `calendar-api` still joins the shared `homebuddy` network only to fetch authBuddy's JWKS, so every container of every stack can call it directly.
 
 ## What Changes
 
@@ -28,4 +28,4 @@ The root capability `homebuddy-deployment` says a product API SHALL NOT be reach
 ## Impact
 
 - `docker-compose.yml`, `README.md`, `docs/ARCHITECTURE.md`, and the `compose-deployment` spec.
-- Rollout: apply only after authBuddy's [`join-identity-networks`](../../../../../authBuddy/openspec/changes/archive/2026-11-06-join-identity-networks/proposal.md) is deployed; otherwise every request returns 401.
+- Rollout: apply only after authBuddy's [`join-identity-networks`](https://github.com/RtCryo/authBuddy/blob/main/openspec/changes/archive/2026-11-06-join-identity-networks/proposal.md) is deployed; otherwise every request returns 401.
