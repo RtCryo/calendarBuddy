@@ -1,5 +1,7 @@
 package com.calendarbuddy.api.appointment;
 
+import com.calendarbuddy.api.metrics.CalendarMetrics;
+import com.calendarbuddy.api.metrics.CalendarMetrics.Operation;
 import com.calendarbuddy.api.account.AccountPrincipal;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -21,7 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/appointments")
 public class AppointmentController {
     private final AppointmentService service;
-    public AppointmentController(AppointmentService service) { this.service = service; }
+    private final CalendarMetrics metrics;
+    public AppointmentController(AppointmentService service, CalendarMetrics metrics) {
+        this.service = service;
+        this.metrics = metrics;
+    }
 
     @GetMapping
     public List<AppointmentResponse> range(@AuthenticationPrincipal AccountPrincipal account,
@@ -38,7 +44,8 @@ public class AppointmentController {
     @PostMapping
     public ResponseEntity<AppointmentResponse> create(@AuthenticationPrincipal AccountPrincipal account,
                                                       @RequestBody AppointmentRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(account.id(), zone(account), request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(metrics.appointment(Operation.CREATE,
+                () -> service.create(account.id(), zone(account), request)));
     }
 
     @PutMapping("/{id}")
@@ -46,7 +53,8 @@ public class AppointmentController {
                                       @RequestParam(required = false) String scope,
                                       @RequestParam(required = false) LocalDate occurrenceDate,
                                       @RequestBody AppointmentRequest request) {
-        return service.update(account.id(), zone(account), id, request, scope, occurrenceDate);
+        return metrics.appointment(Operation.UPDATE,
+                () -> service.update(account.id(), zone(account), id, request, scope, occurrenceDate));
     }
 
     @DeleteMapping("/{id}")
@@ -54,7 +62,10 @@ public class AppointmentController {
                                        @RequestParam long version,
                                        @RequestParam(required = false) String scope,
                                        @RequestParam(required = false) LocalDate occurrenceDate) {
-        service.delete(account.id(), zone(account), id, version, scope, occurrenceDate);
+        metrics.appointment(Operation.DELETE, () -> {
+            service.delete(account.id(), zone(account), id, version, scope, occurrenceDate);
+            return null;
+        });
         return ResponseEntity.noContent().build();
     }
 

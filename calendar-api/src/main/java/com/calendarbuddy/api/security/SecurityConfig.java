@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -39,6 +40,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(
                         requests -> requests.requestMatchers("/actuator/health", "/actuator/health/**", "/error")
                                 .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
                                 .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(accountConverter)))
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(

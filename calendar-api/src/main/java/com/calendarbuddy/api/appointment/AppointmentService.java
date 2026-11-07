@@ -1,5 +1,6 @@
 package com.calendarbuddy.api.appointment;
 
+import com.calendarbuddy.api.metrics.CalendarMetrics;
 import com.calendarbuddy.api.member.FamilyMemberRepository;
 import java.time.DayOfWeek;
 import java.time.Duration;
@@ -29,9 +30,11 @@ public class AppointmentService {
     private final FamilyMemberRepository members;
     private final RecurrenceEngine recurrence;
     private final JdbcTemplate jdbc;
+    private final CalendarMetrics metrics;
 
     public AppointmentService(AppointmentRepository appointments, FamilyMemberRepository members,
-                              RecurrenceEngine recurrence, JdbcTemplate jdbc) {
+                              RecurrenceEngine recurrence, JdbcTemplate jdbc, CalendarMetrics metrics) {
+        this.metrics = metrics;
         this.appointments = appointments;
         this.members = members;
         this.recurrence = recurrence;
@@ -66,12 +69,18 @@ public class AppointmentService {
         for (AppointmentRecord row : appointments.exceptionsNear(accountId, windowStart, to, lower, upper, from))
             exceptions.computeIfAbsent(row.seriesId(), key -> new HashMap<>()).put(row.originalDate(), row);
         Map<Long, Set<LocalDate>> exdates = appointments.exdates(accountId, windowStart, to);
+        long expansionNanos = 0;
+        boolean expanded = false;
         for (AppointmentRecord row : appointments.series(accountId)) {
             LocalDate start = localStart(row, zone);
             int span = spanDays(row, zone);
             Map<LocalDate, AppointmentRecord> own = exceptions.getOrDefault(row.id(), Map.of());
             Set<LocalDate> skipped = exdates.getOrDefault(row.id(), Set.of());
-            for (LocalDate date : recurrence.expand(row, from, to, start, span)) {
+            long expansionStart = System.nanoTime();
+            List<LocalDate> dates = recurrence.expand(row, from, to, start, span);
+            expansionNanos += System.nanoTime() - expansionStart;
+            expanded = true;
+            for (LocalDate date : dates) {
                 if (skipped.contains(date)) continue;
                 AppointmentRecord exception = own.get(date);
                 Candidate item = exception != null ? detached(exception, date, row.version())
@@ -87,6 +96,7 @@ public class AppointmentService {
                 }
             }
         }
+        if (expanded) metrics.recurrenceExpansion(expansionNanos);
         Map<Long, List<Long>> participants = appointments.participantIds(accountId,
                 candidates.stream().map(item -> item.row().id()).collect(Collectors.toSet()));
         List<AppointmentResponse> result = new ArrayList<>();

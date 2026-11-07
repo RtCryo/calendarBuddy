@@ -1,5 +1,7 @@
 package com.calendarbuddy.api.member;
 
+import com.calendarbuddy.api.metrics.CalendarMetrics;
+import com.calendarbuddy.api.metrics.CalendarMetrics.Operation;
 import com.calendarbuddy.api.account.AccountPrincipal;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -18,8 +20,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/family-members")
 public class FamilyMemberController {
     private final FamilyMemberService service;
+    private final CalendarMetrics metrics;
 
-    public FamilyMemberController(FamilyMemberService service) { this.service = service; }
+    public FamilyMemberController(FamilyMemberService service, CalendarMetrics metrics) {
+        this.service = service;
+        this.metrics = metrics;
+    }
 
     @GetMapping
     public List<MemberResponse> list(@AuthenticationPrincipal AccountPrincipal account) {
@@ -34,13 +40,14 @@ public class FamilyMemberController {
     @PostMapping
     public ResponseEntity<MemberResponse> create(@AuthenticationPrincipal AccountPrincipal account,
                                                  @RequestBody MemberRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(account.id(), request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(metrics.member(Operation.CREATE,
+                () -> service.create(account.id(), request)));
     }
 
     @PutMapping("/{id}")
     public MemberResponse update(@AuthenticationPrincipal AccountPrincipal account, @PathVariable long id,
                                  @RequestBody MemberRequest request) {
-        return service.update(account.id(), id, request);
+        return metrics.member(Operation.UPDATE, () -> service.update(account.id(), id, request));
     }
 
     @GetMapping("/{id}/removal-impact")
@@ -50,6 +57,6 @@ public class FamilyMemberController {
 
     @DeleteMapping("/{id}")
     public RemovalImpact remove(@AuthenticationPrincipal AccountPrincipal account, @PathVariable long id) {
-        return service.remove(account.id(), id);
+        return metrics.member(Operation.DELETE, () -> service.remove(account.id(), id));
     }
 }
