@@ -36,6 +36,7 @@ services:
     networks:
       - default
       - calendarbuddy-identity
+      - calendarbuddy-metrics
 
   ui:
     build: ./ui
@@ -96,3 +97,10 @@ networks:
   calendarbuddy-identity:
     external: true
     name: calendarbuddy-identity
+  # Internal-only network shared only with the central Prometheus, which scrapes
+  # /actuator/prometheus (root capability homebuddy-monitoring). Create it once
+  # per host:
+  #   docker network create --internal calendarbuddy-metrics
+  calendarbuddy-metrics:
+    external: true
+    name: calendarbuddy-metrics
