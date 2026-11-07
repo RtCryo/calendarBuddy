@@ -35,7 +35,7 @@ services:
       start_period: 40s
     networks:
       - default
-      - homebuddy
+      - calendarbuddy-identity
 
   ui:
     build: ./ui
@@ -90,3 +90,9 @@ networks:
   homebuddy:
     external: true
     name: homebuddy
+  # Internal-only network shared with authBuddy for the JWKS fetch (root
+  # capability homebuddy-deployment). Create it once per host:
+  #   docker network create --internal calendarbuddy-identity
+  calendarbuddy-identity:
+    external: true
+    name: calendarbuddy-identity
