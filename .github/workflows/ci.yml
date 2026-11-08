@@ -1,0 +1,203 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      calendar-api: ${{ steps.filter.outputs.calendar-api }}
+      ui: ${{ steps.filter.outputs.ui }}
+      compose: ${{ steps.filter.outputs.compose }}
+      openspec: ${{ steps.filter.outputs.openspec }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # On push to main every job runs, so main is always fully verified.
+      - name: Detect changed areas
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            calendar-api:
+              - 'calendar-api/**'
+              - '.github/workflows/ci.yml'
+              - 'release-please-config.json'
+            ui:
+              - 'ui/**'
+              - '.github/workflows/ci.yml'
+              - 'release-please-config.json'
+            compose:
+              - 'docker-compose*.yml'
+              - '.env.example'
+              - '.github/workflows/ci.yml'
+              - 'release-please-config.json'
+            openspec:
+              - 'openspec/**'
+              - '.github/workflows/ci.yml'
+              - 'release-please-config.json'
+
+  calendar-api:
+    name: calendar-api
+    needs: changes
+    if: needs.changes.outputs.calendar-api == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: calendar-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Check code style
+        run: ./mvnw -B spotless:check
+
+      # Docker is preinstalled on ubuntu-latest, which Testcontainers needs.
+      - name: Verify
+        run: ./mvnw -B verify
+
+  ui:
+    name: ui
+    needs: changes
+    if: needs.changes.outputs.ui == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  image:
+    name: Image ${{ matrix.component }}
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [calendar-api, ui]
+    steps:
+      - name: Skip when the component did not change
+        id: gate
+        env:
+          CHANGED: ${{ needs.changes.outputs[matrix.component] }}
+        run: |
+          if [ "$CHANGED" = "true" ] || [ "${{ github.event_name }}" = "push" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        if: steps.gate.outputs.run == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build the image without pushing it
+        if: steps.gate.outputs.run == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.component }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+  compose:
+    name: Compose configuration
+    needs: changes
+    if: needs.changes.outputs.compose == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # CI-only values for every variable the Compose files require.
+    env:
+      POSTGRES_PASSWORD: ci-postgres-password
+      CALENDAR_DOMAIN: calendar.example.com
+      CALENDARBUDDY_VERSION: 0.0.0-ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate the production stack
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Validate the development stack
+        run: docker compose config --quiet
+
+  openspec:
+    name: OpenSpec
+    needs: changes
+    if: needs.changes.outputs.openspec == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+
+      - name: Validate OpenSpec changes and specs
+        run: npx --yes @fission-ai/openspec@1.13.2 validate --all --strict --no-interactive
+
+  # The single status check that branch protection requires. It reports on every
+  # pull request and push; skipped jobs count as passed.
+  ci:
+    name: ci
+    if: always()
+    needs: [changes, calendar-api, ui, image, compose, openspec]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the results of the needed jobs
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -q -E '"(failure|cancelled)"'; then
+            echo "At least one job failed or was cancelled." >&2
+            exit 1
+          fi
