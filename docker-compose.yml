@@ -15,7 +15,7 @@ services:
       retries: 10
 
   calendar-api:
-    build: ./calendar-api
+    image: ghcr.io/rtcryo/calendarbuddy-calendar-api:${CALENDARBUDDY_VERSION:?Set CALENDARBUDDY_VERSION to a released version (see .env.example)}
     container_name: calendarbuddy-calendar-api
     depends_on:
       postgres:
@@ -39,7 +39,7 @@ services:
       - calendarbuddy-metrics
 
   ui:
-    build: ./ui
+    image: ghcr.io/rtcryo/calendarbuddy-ui:${CALENDARBUDDY_VERSION:?Set CALENDARBUDDY_VERSION to a released version (see .env.example)}
     container_name: calendarbuddy-ui
     depends_on:
       calendar-api:

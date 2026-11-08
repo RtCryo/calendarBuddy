@@ -1,0 +1,189 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish images for (for example v1.0.0)
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Release pull request
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # A dedicated token is needed so the release pull request triggers CI;
+      # pull requests created with GITHUB_TOKEN do not.
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  target:
+    name: Release target
+    needs: [release-please]
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.release-please.outputs.release_created == 'true')
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.target.outputs.tag }}
+      version: ${{ steps.target.outputs.version }}
+    steps:
+      - name: Resolve the tag and version
+        id: target
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
+        run: |
+          if ! echo "$TAG" | grep -q -E '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Tag '$TAG' is not of the form vX.Y.Z" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish ${{ matrix.component }}
+    needs: [target]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [calendar-api, ui]
+    env:
+      IMAGE: ghcr.io/rtcryo/calendarbuddy-${{ matrix.component }}
+      VERSION: ${{ needs.target.outputs.version }}
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.target.outputs.tag }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # An X.Y.Z tag is never overwritten: skip images that already exist.
+      - name: Look for an existing image
+        id: existing
+        run: |
+          if digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}' 2>/dev/null)"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE:$VERSION already exists ($digest); skipping"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Compute tags and labels
+        id: meta
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.target.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.target.outputs.tag }}
+          flavor: latest=false
+
+      - name: Build and push
+        id: build
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.component }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest build provenance
+        if: steps.existing.outputs.exists == 'false'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Record the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest || steps.existing.outputs.digest }}
+        run: |
+          mkdir digest
+          echo "$IMAGE:$VERSION $DIGEST" > "digest/${{ matrix.component }}.txt"
+
+      - name: Upload the digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.component }}
+          path: digest/${{ matrix.component }}.txt
+
+  notes:
+    name: Release notes
+    needs: [target, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the digests
+        uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - name: Add the image table to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.target.outputs.tag }}
+        run: |
+          body="$(gh release view "$TAG" --json body --jq .body)"
+          # Replace a previous table so re-runs do not duplicate it.
+          body="$(printf '%s\n' "$body" | sed '/^<!-- images:start -->$/,/^<!-- images:end -->$/d')"
+          {
+            printf '%s\n\n' "$body"
+            echo '<!-- images:start -->'
+            echo '### Images'
+            echo
+            echo '| Image | Digest |'
+            echo '|---|---|'
+            sort digests/*.txt | while read -r image digest; do
+              echo "| \`$image\` | \`$digest\` |"
+            done
+            echo '<!-- images:end -->'
+          } > notes.md
+          gh release edit "$TAG" --notes-file notes.md
