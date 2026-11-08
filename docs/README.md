@@ -8,3 +8,4 @@
 - [Archived change: add-calendar-buddy](../openspec/changes/archive/2026-11-05-add-calendar-buddy/proposal.md)
 - [Capability specs](../openspec/specs/)
 - [Delivery and releases](../openspec/specs/delivery/spec.md)
+- [Release token and delivery flow](ARCHITECTURE.md#delivery-and-releases)

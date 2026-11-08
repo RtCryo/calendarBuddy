@@ -2,7 +2,7 @@
 
 ## Why
 
-The root change [`add-homebuddy-ci-and-releases`](../../../../openspec/changes/add-homebuddy-ci-and-releases/proposal.md) defines the root capability `homebuddy-delivery`: one CI workflow with a required `ci` gate, Conventional Commits, release-please releases, and production Compose files that run released images. calendarBuddy's three workflows run on every branch push without a `main` filter, `permissions`, or `concurrency`; `calendar-api` has no code-style check at all (its `pom.xml` has no Spotless); no Docker image is built in CI; OpenSpec is never validated; and there is no release, so production builds two images from whatever source is checked out.
+The root change [`add-homebuddy-ci-and-releases`](https://github.com/RtCryo/homeBuddy/blob/main/openspec/changes/add-homebuddy-ci-and-releases/proposal.md) defines the root capability `homebuddy-delivery`: one CI workflow with a required `ci` gate, Conventional Commits, release-please releases, and production Compose files that run released images. calendarBuddy's three workflows run on every branch push without a `main` filter, `permissions`, or `concurrency`; `calendar-api` has no code-style check at all (its `pom.xml` has no Spotless); no Docker image is built in CI; OpenSpec is never validated; and there is no release, so production builds two images from whatever source is checked out.
 
 ## What Changes
 
