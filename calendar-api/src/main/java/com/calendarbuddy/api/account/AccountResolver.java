@@ -34,7 +34,8 @@ public class AccountResolver {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
                 Account account = transactions.execute(status -> resolveOnce(id, email));
-                return new AccountPrincipal(account.getId(), account.getEmail(), account.getTimeZone());
+                return new AccountPrincipal(
+                        account.getId(), account.getEmail(), account.getTimeZone());
             } catch (DataIntegrityViolationException error) {
                 if (attempt == 2) {
                     throw new BadCredentialsException("Account provisioning conflict", error);

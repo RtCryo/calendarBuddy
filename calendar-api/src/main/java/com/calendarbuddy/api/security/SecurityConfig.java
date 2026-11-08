@@ -38,13 +38,20 @@ public class SecurityConfig {
         http.csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(
-                        requests -> requests.requestMatchers("/actuator/health", "/actuator/health/**", "/error")
-                                .permitAll()
-                                .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
-                                .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(accountConverter)))
-                .exceptionHandling(errors -> errors.authenticationEntryPoint(
-                        new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
+                        requests ->
+                                requests.requestMatchers(
+                                                "/actuator/health", "/actuator/health/**", "/error")
+                                        .permitAll()
+                                        .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
+                                        .permitAll()
+                                        .anyRequest()
+                                        .authenticated())
+                .oauth2ResourceServer(
+                        oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(accountConverter)))
+                .exceptionHandling(
+                        errors ->
+                                errors.authenticationEntryPoint(
+                                        new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
         return http.build();
     }
 
@@ -53,17 +60,23 @@ public class SecurityConfig {
             @Value("${app.auth.jwks-uri}") String jwksUri,
             @Value("${app.auth.issuer}") String issuer,
             @Value("${app.auth.audience}") String audience) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwksUri)
-                .jwsAlgorithm(SignatureAlgorithm.RS256).build();
-        // getAudience() is null when the token has no aud claim; that token must fail as invalid, not throw.
-        OAuth2TokenValidator<Jwt> audienceValidator = jwt -> jwt.getAudience() != null
-                && jwt.getAudience().contains(audience)
-                ? OAuth2TokenValidatorResult.success()
-                : OAuth2TokenValidatorResult.failure(
-                        new OAuth2Error("invalid_token", "Wrong audience", null));
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                new JwtTimestampValidator(Duration.ofSeconds(60)),
-                new JwtIssuerValidator(issuer), audienceValidator));
+        NimbusJwtDecoder decoder =
+                NimbusJwtDecoder.withJwkSetUri(jwksUri)
+                        .jwsAlgorithm(SignatureAlgorithm.RS256)
+                        .build();
+        // getAudience() is null when the token has no aud claim; that token must fail as invalid,
+        // not throw.
+        OAuth2TokenValidator<Jwt> audienceValidator =
+                jwt ->
+                        jwt.getAudience() != null && jwt.getAudience().contains(audience)
+                                ? OAuth2TokenValidatorResult.success()
+                                : OAuth2TokenValidatorResult.failure(
+                                        new OAuth2Error("invalid_token", "Wrong audience", null));
+        decoder.setJwtValidator(
+                new DelegatingOAuth2TokenValidator<>(
+                        new JwtTimestampValidator(Duration.ofSeconds(60)),
+                        new JwtIssuerValidator(issuer),
+                        audienceValidator));
         return decoder;
     }
 

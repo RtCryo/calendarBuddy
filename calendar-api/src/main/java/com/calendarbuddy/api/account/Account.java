@@ -28,9 +28,23 @@ public class Account {
         this.email = email;
     }
 
-    public UUID getId() { return id; }
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-    public String getTimeZone() { return timeZone; }
-    public Instant getCreatedAt() { return createdAt; }
+    public UUID getId() {
+        return id;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getTimeZone() {
+        return timeZone;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
 }
