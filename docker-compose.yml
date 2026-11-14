@@ -63,7 +63,7 @@ services:
       retries: 3
 
   traefik:
-    image: traefik:v3.7.17
+    image: traefik:v3.7.19
     container_name: calendarbuddy-traefik
     profiles: [production]
     command:
