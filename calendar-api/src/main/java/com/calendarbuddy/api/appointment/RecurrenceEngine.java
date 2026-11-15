@@ -11,13 +11,14 @@ import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * Expands recurrence rules period by period (day, week, month, or year), so the cost of a query depends on the
- * requested range and, for count-limited series, on the bounded count, never on the age of an open-ended series.
+ * Expands recurrence rules period by period (day, week, month, or year), so the cost of a query
+ * depends on the requested range and, for count-limited series, on the bounded count, never on the
+ * age of an open-ended series.
  */
 @Component
 public class RecurrenceEngine {
-    public List<LocalDate> expand(AppointmentRecord series, LocalDate from, LocalDate to,
-                                  LocalDate start, int spanDays) {
+    public List<LocalDate> expand(
+            AppointmentRecord series, LocalDate from, LocalDate to, LocalDate start, int spanDays) {
         if (series.recurrenceFreq() == null) return List.of();
         String freq = series.recurrenceFreq();
         int interval = series.recurrenceInterval();
@@ -26,13 +27,16 @@ public class RecurrenceEngine {
         LocalDate earliest = from.minusDays(spanDays);
         List<DayOfWeek> days = "WEEKLY".equals(freq) ? weekdays(series) : List.of();
         List<LocalDate> found = new ArrayList<>();
-        // Open-ended series jump straight to the period containing the earliest relevant date. A count needs the
-        // occurrences before the range, but it is capped at 730, so counting from the start stays bounded.
+        // Open-ended series jump straight to the period containing the earliest relevant date. A
+        // count needs the
+        // occurrences before the range, but it is capped at 730, so counting from the start stays
+        // bounded.
         long period = count == null ? firstPeriod(freq, start, earliest, interval) : 0;
         int generated = 0;
-        for (;; period++) {
+        for (; ; period++) {
             LocalDate periodStart = periodStart(freq, start, period * interval);
-            if (!periodStart.isBefore(to) || (until != null && periodStart.isAfter(until))) return found;
+            if (!periodStart.isBefore(to) || (until != null && periodStart.isAfter(until)))
+                return found;
             for (LocalDate day : candidates(freq, start, periodStart, days)) {
                 if (day.isBefore(start)) continue;
                 if (!day.isBefore(to) || (until != null && day.isAfter(until))) return found;
@@ -48,13 +52,18 @@ public class RecurrenceEngine {
 
     private long firstPeriod(String freq, LocalDate start, LocalDate earliest, int interval) {
         if (!earliest.isAfter(start)) return 0;
-        long elapsed = switch (freq) {
-            case "DAILY" -> ChronoUnit.DAYS.between(start, earliest);
-            case "WEEKLY" -> ChronoUnit.WEEKS.between(start.with(DayOfWeek.MONDAY), earliest.with(DayOfWeek.MONDAY));
-            case "MONTHLY" -> ChronoUnit.MONTHS.between(YearMonth.from(start), YearMonth.from(earliest));
-            case "YEARLY" -> earliest.getYear() - start.getYear();
-            default -> 0;
-        };
+        long elapsed =
+                switch (freq) {
+                    case "DAILY" -> ChronoUnit.DAYS.between(start, earliest);
+                    case "WEEKLY" ->
+                            ChronoUnit.WEEKS.between(
+                                    start.with(DayOfWeek.MONDAY), earliest.with(DayOfWeek.MONDAY));
+                    case "MONTHLY" ->
+                            ChronoUnit.MONTHS.between(
+                                    YearMonth.from(start), YearMonth.from(earliest));
+                    case "YEARLY" -> earliest.getYear() - start.getYear();
+                    default -> 0;
+                };
         return elapsed / interval;
     }
 
@@ -68,18 +77,26 @@ public class RecurrenceEngine {
         };
     }
 
-    /** Occurrence dates inside one period in ascending order; months or years without the start day yield none. */
-    private List<LocalDate> candidates(String freq, LocalDate start, LocalDate periodStart, List<DayOfWeek> days) {
+    /**
+     * Occurrence dates inside one period in ascending order; months or years without the start day
+     * yield none.
+     */
+    private List<LocalDate> candidates(
+            String freq, LocalDate start, LocalDate periodStart, List<DayOfWeek> days) {
         return switch (freq) {
             case "DAILY" -> List.of(periodStart);
             case "WEEKLY" -> days.stream().map(day -> periodStart.plusDays(day.ordinal())).toList();
             case "MONTHLY" -> {
                 YearMonth month = YearMonth.from(periodStart);
-                yield month.isValidDay(start.getDayOfMonth()) ? List.of(month.atDay(start.getDayOfMonth())) : List.of();
+                yield month.isValidDay(start.getDayOfMonth())
+                        ? List.of(month.atDay(start.getDayOfMonth()))
+                        : List.of();
             }
             case "YEARLY" -> {
                 MonthDay day = MonthDay.from(start);
-                yield day.isValidYear(periodStart.getYear()) ? List.of(day.atYear(periodStart.getYear())) : List.of();
+                yield day.isValidYear(periodStart.getYear())
+                        ? List.of(day.atYear(periodStart.getYear()))
+                        : List.of();
             }
             default -> List.of();
         };
@@ -88,11 +105,16 @@ public class RecurrenceEngine {
     private List<DayOfWeek> weekdays(AppointmentRecord series) {
         EnumSet<DayOfWeek> result = EnumSet.noneOf(DayOfWeek.class);
         for (String day : series.recurrenceWeekdays().split(",")) {
-            result.add(switch (day) {
-                case "MON" -> DayOfWeek.MONDAY; case "TUE" -> DayOfWeek.TUESDAY; case "WED" -> DayOfWeek.WEDNESDAY;
-                case "THU" -> DayOfWeek.THURSDAY; case "FRI" -> DayOfWeek.FRIDAY; case "SAT" -> DayOfWeek.SATURDAY;
-                default -> DayOfWeek.SUNDAY;
-            });
+            result.add(
+                    switch (day) {
+                        case "MON" -> DayOfWeek.MONDAY;
+                        case "TUE" -> DayOfWeek.TUESDAY;
+                        case "WED" -> DayOfWeek.WEDNESDAY;
+                        case "THU" -> DayOfWeek.THURSDAY;
+                        case "FRI" -> DayOfWeek.FRIDAY;
+                        case "SAT" -> DayOfWeek.SATURDAY;
+                        default -> DayOfWeek.SUNDAY;
+                    });
         }
         return List.copyOf(result);
     }

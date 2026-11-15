@@ -37,7 +37,9 @@ class HomeBuddyJwtDecoderTest {
             assertThat(decoder.decode(token(first, "homebuddy-auth", "calendarbuddy")).getSubject())
                     .isNotBlank();
             published.set(new JWKSet(List.of(first.toPublicJWK(), second.toPublicJWK())));
-            assertThat(decoder.decode(token(second, "homebuddy-auth", "calendarbuddy")).getSubject())
+            assertThat(
+                            decoder.decode(token(second, "homebuddy-auth", "calendarbuddy"))
+                                    .getSubject())
                     .isNotBlank();
         } finally {
             server.stop(0);
@@ -54,7 +56,13 @@ class HomeBuddyJwtDecoderTest {
                     .isInstanceOf(Exception.class);
             assertThatThrownBy(() -> decoder.decode(token(key, "homebuddy-auth", "finanzbuddy")))
                     .isInstanceOf(Exception.class);
-            assertThatThrownBy(() -> decoder.decode(token(key("unknown"), "homebuddy-auth", "calendarbuddy")))
+            assertThatThrownBy(
+                            () ->
+                                    decoder.decode(
+                                            token(
+                                                    key("unknown"),
+                                                    "homebuddy-auth",
+                                                    "calendarbuddy")))
                     .isInstanceOf(Exception.class);
             assertThatThrownBy(() -> decoder.decode(expiredToken(key)))
                     .isInstanceOf(Exception.class);

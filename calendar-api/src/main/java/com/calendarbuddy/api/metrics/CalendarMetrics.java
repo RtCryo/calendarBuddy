@@ -14,15 +14,23 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Business metrics for the central homeBuddy monitoring. Labels come from fixed sets ({@code operation} and
- * {@code outcome}), and the stored totals count rows across all accounts, so the series count never depends on
- * accounts, members, or appointments.
+ * Business metrics for the central homeBuddy monitoring. Labels come from fixed sets ({@code
+ * operation} and {@code outcome}), and the stored totals count rows across all accounts, so the
+ * series count never depends on accounts, members, or appointments.
  */
 @Component
 public class CalendarMetrics {
-    public enum Operation { CREATE, UPDATE, DELETE }
+    public enum Operation {
+        CREATE,
+        UPDATE,
+        DELETE
+    }
 
-    public enum Outcome { SUCCESS, CONFLICT, INVALID }
+    public enum Outcome {
+        SUCCESS,
+        CONFLICT,
+        INVALID
+    }
 
     private static final Duration TOTALS_CACHE = Duration.ofSeconds(15);
 
@@ -33,31 +41,47 @@ public class CalendarMetrics {
     private final CachedCount members;
 
     public CalendarMetrics(MeterRegistry registry, JdbcTemplate jdbc) {
-        appointmentOperations = counters(registry, "calendarbuddy.appointment.operations",
-                "Appointment operations by operation and outcome");
-        memberOperations = counters(registry, "calendarbuddy.family.member.operations",
-                "Family member operations by operation and outcome");
-        recurrenceExpansion = Timer.builder("calendarbuddy.recurrence.expansion")
-                .description("Time spent expanding recurring appointments for one requested range")
-                .register(registry);
-        // Detached occurrences are rows of their series, so only series heads and one-offs count as appointments.
-        appointments = new CachedCount(jdbc, "SELECT COUNT(*) FROM appointments WHERE series_id IS NULL");
+        appointmentOperations =
+                counters(
+                        registry,
+                        "calendarbuddy.appointment.operations",
+                        "Appointment operations by operation and outcome");
+        memberOperations =
+                counters(
+                        registry,
+                        "calendarbuddy.family.member.operations",
+                        "Family member operations by operation and outcome");
+        recurrenceExpansion =
+                Timer.builder("calendarbuddy.recurrence.expansion")
+                        .description(
+                                "Time spent expanding recurring appointments for one requested range")
+                        .register(registry);
+        // Detached occurrences are rows of their series, so only series heads and one-offs count as
+        // appointments.
+        appointments =
+                new CachedCount(jdbc, "SELECT COUNT(*) FROM appointments WHERE series_id IS NULL");
         members = new CachedCount(jdbc, "SELECT COUNT(*) FROM family_members");
         Gauge.builder("calendarbuddy.appointments", appointments, CachedCount::get)
-                .description("Stored appointments across all accounts").register(registry);
+                .description("Stored appointments across all accounts")
+                .register(registry);
         Gauge.builder("calendarbuddy.family.members", members, CachedCount::get)
-                .description("Stored family members across all accounts").register(registry);
+                .description("Stored family members across all accounts")
+                .register(registry);
     }
 
-    private static Map<Operation, Map<Outcome, Counter>> counters(MeterRegistry registry, String name,
-                                                                  String description) {
+    private static Map<Operation, Map<Outcome, Counter>> counters(
+            MeterRegistry registry, String name, String description) {
         Map<Operation, Map<Outcome, Counter>> result = new EnumMap<>(Operation.class);
         for (Operation operation : Operation.values()) {
             Map<Outcome, Counter> byOutcome = new EnumMap<>(Outcome.class);
             for (Outcome outcome : Outcome.values()) {
-                byOutcome.put(outcome, Counter.builder(name).description(description)
-                        .tag("operation", operation.name().toLowerCase())
-                        .tag("outcome", outcome.name().toLowerCase()).register(registry));
+                byOutcome.put(
+                        outcome,
+                        Counter.builder(name)
+                                .description(description)
+                                .tag("operation", operation.name().toLowerCase())
+                                .tag("outcome", outcome.name().toLowerCase())
+                                .register(registry));
             }
             result.put(operation, byOutcome);
         }
@@ -88,7 +112,9 @@ public class CalendarMetrics {
         }
     }
 
-    /** A row count that is read at most once per cache period, so scraping cannot load the database. */
+    /**
+     * A row count that is read at most once per cache period, so scraping cannot load the database.
+     */
     private static final class CachedCount {
         private final JdbcTemplate jdbc;
         private final String sql;

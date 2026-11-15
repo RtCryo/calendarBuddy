@@ -1,8 +1,14 @@
-# Local development ports from the homeBuddy registry. Omit this file in production.
+# Local development: builds the application components from the working tree and tags them
+# calendarbuddy-<component>:dev, so a local build never shadows a released image, and publishes
+# the ports from the homeBuddy registry. Omit this file in production.
 services:
   postgres:
     ports: ["5433:5432"]
   calendar-api:
+    build: ./calendar-api
+    image: calendarbuddy-calendar-api:dev
     ports: ["8081:8080"]
   ui:
+    build: ./ui
+    image: calendarbuddy-ui:dev
     ports: ["3010:80"]

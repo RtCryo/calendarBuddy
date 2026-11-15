@@ -6,6 +6,9 @@ COPY . .
 RUN npm run build
 
 FROM nginx:alpine
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.version="${VERSION}" org.opencontainers.image.revision="${REVISION}"
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

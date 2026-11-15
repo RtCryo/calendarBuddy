@@ -1,8 +1,8 @@
 package com.calendarbuddy.api.member;
 
+import com.calendarbuddy.api.account.AccountPrincipal;
 import com.calendarbuddy.api.metrics.CalendarMetrics;
 import com.calendarbuddy.api.metrics.CalendarMetrics.Operation;
-import com.calendarbuddy.api.account.AccountPrincipal;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,30 +33,37 @@ public class FamilyMemberController {
     }
 
     @GetMapping("/{id}")
-    public MemberResponse get(@AuthenticationPrincipal AccountPrincipal account, @PathVariable long id) {
+    public MemberResponse get(
+            @AuthenticationPrincipal AccountPrincipal account, @PathVariable long id) {
         return service.get(account.id(), id);
     }
 
     @PostMapping
-    public ResponseEntity<MemberResponse> create(@AuthenticationPrincipal AccountPrincipal account,
-                                                 @RequestBody MemberRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(metrics.member(Operation.CREATE,
-                () -> service.create(account.id(), request)));
+    public ResponseEntity<MemberResponse> create(
+            @AuthenticationPrincipal AccountPrincipal account, @RequestBody MemberRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(
+                        metrics.member(
+                                Operation.CREATE, () -> service.create(account.id(), request)));
     }
 
     @PutMapping("/{id}")
-    public MemberResponse update(@AuthenticationPrincipal AccountPrincipal account, @PathVariable long id,
-                                 @RequestBody MemberRequest request) {
+    public MemberResponse update(
+            @AuthenticationPrincipal AccountPrincipal account,
+            @PathVariable long id,
+            @RequestBody MemberRequest request) {
         return metrics.member(Operation.UPDATE, () -> service.update(account.id(), id, request));
     }
 
     @GetMapping("/{id}/removal-impact")
-    public RemovalImpact impact(@AuthenticationPrincipal AccountPrincipal account, @PathVariable long id) {
+    public RemovalImpact impact(
+            @AuthenticationPrincipal AccountPrincipal account, @PathVariable long id) {
         return service.impact(account.id(), id);
     }
 
     @DeleteMapping("/{id}")
-    public RemovalImpact remove(@AuthenticationPrincipal AccountPrincipal account, @PathVariable long id) {
+    public RemovalImpact remove(
+            @AuthenticationPrincipal AccountPrincipal account, @PathVariable long id) {
         return metrics.member(Operation.DELETE, () -> service.remove(account.id(), id));
     }
 }

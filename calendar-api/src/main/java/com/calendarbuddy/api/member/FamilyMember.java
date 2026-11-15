@@ -36,11 +36,31 @@ public class FamilyMember {
         this.color = color;
     }
 
-    public Long getId() { return id; }
-    public UUID getAccountId() { return accountId; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getColor() { return color; }
-    public void setColor(String color) { this.color = color; }
-    public Instant getCreatedAt() { return createdAt; }
+    public Long getId() {
+        return id;
+    }
+
+    public UUID getAccountId() {
+        return accountId;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public void setColor(String color) {
+        this.color = color;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
 }

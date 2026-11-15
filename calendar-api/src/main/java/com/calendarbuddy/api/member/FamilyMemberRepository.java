@@ -7,8 +7,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface FamilyMemberRepository extends JpaRepository<FamilyMember, Long> {
     List<FamilyMember> findByAccountIdOrderByCreatedAtAscIdAsc(UUID accountId);
+
     Optional<FamilyMember> findByIdAndAccountId(Long id, UUID accountId);
+
     boolean existsByIdAndAccountId(Long id, UUID accountId);
+
     long countByAccountId(UUID accountId);
+
     boolean existsByAccountIdAndNameIgnoreCase(UUID accountId, String name);
 }
