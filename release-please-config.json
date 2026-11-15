@@ -12,7 +12,8 @@
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug fixes" },
         { "type": "perf", "section": "Performance" },
-        { "type": "revert", "section": "Reverts" }
+        { "type": "revert", "section": "Reverts" },
+        { "type": "ci", "section": "Continuous integration" }
       ]
     }
   }
