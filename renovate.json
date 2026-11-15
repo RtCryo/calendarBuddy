@@ -3,5 +3,24 @@
   "extends": [
     "config:recommended",
     ":semanticCommits"
+  ],
+  "packageRules": [
+    {
+      "description": "Runtime dependency updates change what users run, so they are fix(deps) commits and trigger a patch release.",
+      "matchDepTypes": ["dependencies"],
+      "semanticCommitType": "fix"
+    },
+    {
+      "description": "Maven dependencies that end up in the application image.",
+      "matchDatasources": ["maven"],
+      "matchDepTypes": ["compile", "runtime", "parent"],
+      "semanticCommitType": "fix"
+    },
+    {
+      "description": "The final Dockerfile stage is the runtime base image.",
+      "matchManagers": ["dockerfile"],
+      "matchDepTypes": ["final"],
+      "semanticCommitType": "fix"
+    }
   ]
 }
