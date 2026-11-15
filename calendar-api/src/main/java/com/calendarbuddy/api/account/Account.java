@@ -1,6 +1,6 @@
 package com.calendarbuddy.api.account;
 
-import jakarta.persistence.Column;
+import  jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -9,7 +9,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "accounts")
-public class Account {
+public class Account    {
     @Id private UUID id;
 
     @Column(nullable = false)
