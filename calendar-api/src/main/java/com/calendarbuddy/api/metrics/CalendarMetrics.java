@@ -8,6 +8,8 @@ import java.time.Duration;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -17,6 +19,10 @@ import org.springframework.web.server.ResponseStatusException;
  * Business metrics for the central homeBuddy monitoring. Labels come from fixed sets ({@code
  * operation} and {@code outcome}), and the stored totals count rows across all accounts, so the
  * series count never depends on accounts, members, or appointments.
+ *
+ * <p>Each operation also writes one log line with its outcome, so a change can be found in the logs
+ * from its trace and the other way round (homebuddy-tracing). The line holds the operation and
+ * outcome only: never a title, note, name, date, or identifier.
  */
 @Component
 public class CalendarMetrics {
@@ -32,6 +38,7 @@ public class CalendarMetrics {
         INVALID
     }
 
+    private static final Logger log = LoggerFactory.getLogger(CalendarMetrics.class);
     private static final Duration TOTALS_CACHE = Duration.ofSeconds(15);
 
     private final Map<Operation, Map<Outcome, Counter>> appointmentOperations;
@@ -89,25 +96,33 @@ public class CalendarMetrics {
     }
 
     public <T> T appointment(Operation operation, Supplier<T> action) {
-        return record(appointmentOperations.get(operation), action);
+        return record("Appointment", operation, appointmentOperations.get(operation), action);
     }
 
     public <T> T member(Operation operation, Supplier<T> action) {
-        return record(memberOperations.get(operation), action);
+        return record("Family member", operation, memberOperations.get(operation), action);
     }
 
     public void recurrenceExpansion(long nanos) {
         recurrenceExpansion.record(Duration.ofNanos(nanos));
     }
 
-    private static <T> T record(Map<Outcome, Counter> counters, Supplier<T> action) {
+    private static <T> T record(
+            String subject,
+            Operation operation,
+            Map<Outcome, Counter> counters,
+            Supplier<T> action) {
+        String verb = operation.name().toLowerCase();
         try {
             T result = action.get();
             counters.get(Outcome.SUCCESS).increment();
+            log.info("{} {} succeeded", subject, verb);
             return result;
         } catch (ResponseStatusException error) {
             boolean conflict = error.getStatusCode().value() == HttpStatus.CONFLICT.value();
-            counters.get(conflict ? Outcome.CONFLICT : Outcome.INVALID).increment();
+            Outcome outcome = conflict ? Outcome.CONFLICT : Outcome.INVALID;
+            counters.get(outcome).increment();
+            log.info("{} {} rejected: {}", subject, verb, outcome.name().toLowerCase());
             throw error;
         }
     }

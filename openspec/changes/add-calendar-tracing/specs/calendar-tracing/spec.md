@@ -47,8 +47,12 @@ Spans of `calendar-api` SHALL NOT contain tokens, `Authorization` or cookie head
 - **THEN** none is found
 
 ### Requirement: calendar-api log lines carry the trace id
-Every log line `calendar-api` writes while handling a traced request SHALL contain `[<traceId>-<spanId>]` with the 32- and 16-character lowercase hexadecimal ids of the current span.
+Every log line `calendar-api` writes while handling a traced request SHALL contain `[<traceId>-<spanId>]` with the 32- and 16-character lowercase hexadecimal ids of the current span. Every create, update, and delete of an appointment or family member SHALL write one log line with the operation and its outcome (`succeeded`, or `rejected` with `conflict` or `invalid`) and no title, note, name, date, or identifier.
 
 #### Scenario: Log line inside a request
 - **WHEN** `calendar-api` logs while handling a traced request
 - **THEN** the log line contains the trace id of that request's trace
+
+#### Scenario: From a span to its log lines
+- **WHEN** a user adds a family member and an operator opens the logs link of that request's span
+- **THEN** the log line `Family member create succeeded` of that request is shown, and it does not contain the member's name

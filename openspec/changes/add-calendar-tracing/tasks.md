@@ -6,6 +6,7 @@
 - [x] 1.2 Build the `JwtDecoder` with a `RestTemplate` that uses the application's `ObservationRegistry`. Verify with a test that the JWKS request carries a `traceparent` header when made inside an observation, and that the existing token validation tests pass.
 - [x] 1.3 Add the `SpanExportingPredicate` that drops server spans of `/actuator/**` and the `ObservationPredicate` that skips Spring Security observations inside them. Verify with a test that a health check exports no span and that every exported trace has its server span.
 - [x] 1.4 Verify with a test that a log line written inside a traced request contains `[<traceId>-<spanId>]`.
+- [x] 1.5 Log each appointment and family member change with its operation and outcome only. Verify with a test that adding a member in a traced request logs `Family member create succeeded` with the caller's trace id and without the member's name.
 
 ## 2. Compose and documentation
 

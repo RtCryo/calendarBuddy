@@ -28,7 +28,7 @@ A `SpanExportingPredicate` bean drops server spans whose `uri` tag starts with `
 
 ### Logs and privacy
 
-Spring Boot's default console pattern includes `[<traceId>-<spanId>]` with tracing on the classpath; calendarBuddy keeps it. Server span names are built from the method and route template (for example `http get /api/family-members/{id}`); Spring records no headers, query parameters, or bodies, and calendarBuddy adds no custom span attributes.
+Spring Boot's default console pattern includes `[<traceId>-<spanId>]` with tracing on the classpath; calendarBuddy keeps it. `calendar-api` wrote no log line per request, so a span's logs link would always be empty. `CalendarMetrics`, which already decides the outcome of every appointment and family member change for its counters, now also logs it: `Appointment create succeeded`, `Family member update rejected: conflict`, and so on, without any title, note, name, date, or identifier. Server span names are built from the method and route template (for example `http get /api/family-members/{id}`); Spring records no headers, query parameters, or bodies, and calendarBuddy adds no custom span attributes.
 
 ## Risks / Trade-offs
 

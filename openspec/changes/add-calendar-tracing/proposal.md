@@ -9,7 +9,7 @@ The root change [`add-homebuddy-tracing`](https://github.com/RtCryo/homeBuddy/bl
 - `calendar-api` records a trace for every incoming HTTP request and exports it with OTLP over HTTP to the collector, following the root capability `homebuddy-tracing`. It does not restate that contract.
 - Resource attributes: `service.name = calendarbuddy-calendar-api`, `service.namespace = calendarbuddy`.
 - Traced outgoing call: the JWKS fetch from authBuddy. The `JwtDecoder` is built with a `RestTemplate` that uses the application's observation registry, so the fetch is a client span inside the request trace and sends `traceparent` to authBuddy.
-- Every log line written inside a trace keeps Spring Boot's default console pattern and carries `[<traceId>-<spanId>]`; calendarBuddy sets no own `logging.pattern.console`.
+- Every log line written inside a trace keeps Spring Boot's default console pattern and carries `[<traceId>-<spanId>]`; calendarBuddy sets no own `logging.pattern.console`. Each appointment or family member change writes one log line with its operation and outcome only, so a span's logs link shows it.
 - Sampling probability 1.0 by default; operators lower it with `CALENDAR_API_TRACING_SAMPLING_PROBABILITY` in `.env`.
 - Health-check and scrape requests to `/actuator/**` are not exported as traces, including Spring Security's spans inside them.
 - Spans carry no tokens, e-mail addresses, appointment titles, notes, or request bodies; span names use route templates. OTLP metrics and log export stay off.

@@ -196,6 +196,41 @@ class CalendarTracingTest {
     }
 
     @Test
+    void memberChangesLogTheirOutcomeWithTheTraceIdAndNoContent(CapturedOutput output)
+            throws Exception {
+        String token = token(UUID.randomUUID());
+        String name = "Grandma Trace " + UUID.randomUUID();
+
+        HttpResponse<String> created =
+                HttpClient.newHttpClient()
+                        .send(
+                                HttpRequest.newBuilder(
+                                                URI.create(
+                                                        "http://localhost:"
+                                                                + port
+                                                                + "/api/family-members"))
+                                        .header("Authorization", "Bearer " + token)
+                                        .header("Content-Type", "application/json")
+                                        .header(
+                                                "traceparent",
+                                                "00-" + TRACE_ID + "-" + PARENT_ID + "-01")
+                                        .POST(
+                                                HttpRequest.BodyPublishers.ofString(
+                                                        "{\"name\":\""
+                                                                + name
+                                                                + "\",\"color\":\"coral\"}"))
+                                        .build(),
+                                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(created.statusCode()).isEqualTo(201);
+        assertThat(output.getOut())
+                .containsPattern(
+                        Pattern.quote("[" + TRACE_ID + "-")
+                                + "[0-9a-f]{16}\\].*Family member create succeeded")
+                .doesNotContain(name);
+    }
+
+    @Test
     void logLinesInsideASpanCarryTheTraceAndSpanId(CapturedOutput output) {
         Span span = tracer.nextSpan().name("log-correlation").start();
         try (Tracer.SpanInScope ignored = tracer.withSpan(span)) {
