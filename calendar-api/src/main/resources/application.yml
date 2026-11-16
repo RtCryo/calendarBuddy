@@ -18,6 +18,26 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+  # Tracing (root capability homebuddy-tracing). The OTLP endpoint is set only by Compose
+  # (MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT); without it no span is exported.
+  tracing:
+    sampling:
+      # Boot's default is 0.1. Overridden by MANAGEMENT_TRACING_SAMPLING_PROBABILITY.
+      probability: 1.0
+  opentelemetry:
+    resource-attributes:
+      service.name: calendarbuddy-calendar-api
+      service.namespace: calendarbuddy
+  # The OpenTelemetry starter also brings OTLP metrics and log export. Metrics are scraped by
+  # Prometheus and logs collected from Docker, so both stay off.
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  logging:
+    export:
+      otlp:
+        enabled: false
 app:
   auth:
     jwks-uri: ${AUTH_JWKS_URI:http://auth:8080/.well-known/jwks.json}

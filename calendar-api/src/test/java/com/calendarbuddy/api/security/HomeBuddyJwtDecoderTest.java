@@ -13,6 +13,7 @@ import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.sun.net.httpserver.HttpServer;
+import io.micrometer.observation.ObservationRegistry;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -79,11 +80,11 @@ class HomeBuddyJwtDecoderTest {
     }
 
     private JwtDecoder decoder(HttpServer server) {
-        return new SecurityConfig()
-                .jwtDecoder(
-                        "http://127.0.0.1:" + server.getAddress().getPort() + "/jwks",
-                        "homebuddy-auth",
-                        "calendarbuddy");
+        return SecurityConfig.homeBuddyDecoder(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/jwks",
+                "homebuddy-auth",
+                "calendarbuddy",
+                ObservationRegistry.NOOP);
     }
 
     private HttpServer server(AtomicReference<JWKSet> published) throws Exception {

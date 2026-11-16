@@ -20,17 +20,17 @@ The batch span processor's bounded queue and export timeout keep request threads
 
 ### Observed JWKS client
 
-`SecurityConfig.jwtDecoder` takes Spring Boot's auto-configured `RestTemplateBuilder` and passes `builder.build()` to `NimbusJwtDecoder.withJwkSetUri(...).restOperations(...)`. The builder carries the observation registry, so the JWKS fetch is a client span (`GET`, `http://auth:8080/.well-known/jwks.json`) that propagates `traceparent`. The decoder caches the key set, so the span appears only on the first validation after start and after a key rotation. Issuer, audience, algorithm, and clock-skew rules are unchanged.
+`SecurityConfig.jwtDecoder` creates a `RestTemplate`, sets the application's `ObservationRegistry` on it, and passes it to `NimbusJwtDecoder.withJwkSetUri(...).restOperations(...)`. The observed client makes the JWKS fetch a client span (`GET`, `http://auth:8080/.well-known/jwks.json`) that propagates `traceparent`. The decoder caches the key set, so the span appears only on the first validation after start and after a key rotation. Issuer, audience, algorithm, and clock-skew rules are unchanged.
 
 ### Actuator requests are not exported
 
-A `SpanExportingPredicate` bean drops server spans whose `uri` tag starts with `/actuator`, so health checks and scrapes create no traces while the HTTP metrics stay unchanged.
+A `SpanExportingPredicate` bean drops server spans whose `uri` tag starts with `/actuator`, so health checks and scrapes create no traces while the HTTP metrics stay unchanged. Spring Security's observations inside such a request would otherwise be exported as orphan spans, so an `ObservationPredicate` skips `spring.security.*` observations whose parent chain leads to a server request for `/actuator/**`.
 
 ### Logs and privacy
 
-Spring Boot's default console pattern includes `[<traceId>-<spanId>]` with tracing on the classpath; calendarBuddy keeps it. Server span names are `<METHOD> <route template>` (for example `GET /api/appointments/{id}`); Spring records no headers, query parameters, or bodies, and calendarBuddy adds no custom span attributes.
+Spring Boot's default console pattern includes `[<traceId>-<spanId>]` with tracing on the classpath; calendarBuddy keeps it. Server span names are built from the method and route template (for example `http get /api/family-members/{id}`); Spring records no headers, query parameters, or bodies, and calendarBuddy adds no custom span attributes.
 
 ## Risks / Trade-offs
 
-- [`RestTemplateBuilder` lives in Boot 4's REST client module] → Add `spring-boot-starter-restclient` if `spring-boot-starter-web` does not bring it; covered by a test that the decoder's client is observed.
+- [Boot 4's `RestTemplateBuilder` lives in a separate REST client module that the API does not use] → Set the observation registry on a plain `RestTemplate` instead of adding the module; a test checks that the JWKS request carries the request's trace context.
 - [A JWKS outage during a request now shows as a failed client span] → Intended: it makes the failure visible in the request trace.

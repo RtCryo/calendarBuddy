@@ -19,7 +19,7 @@ Defines how `calendar-api` takes part in homeBuddy tracing. The trace pipeline, 
 
 #### Scenario: Health checks and scrapes
 - **WHEN** the health check or the central Prometheus calls `/actuator/**`
-- **THEN** no span of that request is exported
+- **THEN** no span of that request is exported, including spans of filters that run inside it
 
 #### Scenario: Collector unavailable
 - **WHEN** the collector cannot be reached

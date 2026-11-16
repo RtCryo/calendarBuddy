@@ -2,8 +2,10 @@ package com.calendarbuddy.api.security;
 
 import com.calendarbuddy.api.account.AccountPrincipal;
 import com.calendarbuddy.api.account.AccountResolver;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +30,7 @@ import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.web.client.RestTemplate;
 
 @Configuration
 public class SecurityConfig {
@@ -59,10 +62,28 @@ public class SecurityConfig {
     JwtDecoder jwtDecoder(
             @Value("${app.auth.jwks-uri}") String jwksUri,
             @Value("${app.auth.issuer}") String issuer,
-            @Value("${app.auth.audience}") String audience) {
+            @Value("${app.auth.audience}") String audience,
+            ObjectProvider<ObservationRegistry> observationRegistry) {
+        return homeBuddyDecoder(
+                jwksUri,
+                issuer,
+                audience,
+                observationRegistry.getIfAvailable(() -> ObservationRegistry.NOOP));
+    }
+
+    static JwtDecoder homeBuddyDecoder(
+            String jwksUri,
+            String issuer,
+            String audience,
+            ObservationRegistry observationRegistry) {
+        // An observed client makes the JWKS fetch a client span of the request that triggered it
+        // and sends the trace context to authBuddy (homebuddy-tracing).
+        RestTemplate jwksClient = new RestTemplate();
+        jwksClient.setObservationRegistry(observationRegistry);
         NimbusJwtDecoder decoder =
                 NimbusJwtDecoder.withJwkSetUri(jwksUri)
                         .jwsAlgorithm(SignatureAlgorithm.RS256)
+                        .restOperations(jwksClient)
                         .build();
         // getAudience() is null when the token has no aud claim; that token must fail as invalid,
         // not throw.

@@ -8,10 +8,10 @@ The root change [`add-homebuddy-tracing`](https://github.com/RtCryo/homeBuddy/bl
 
 - `calendar-api` records a trace for every incoming HTTP request and exports it with OTLP over HTTP to the collector, following the root capability `homebuddy-tracing`. It does not restate that contract.
 - Resource attributes: `service.name = calendarbuddy-calendar-api`, `service.namespace = calendarbuddy`.
-- Traced outgoing call: the JWKS fetch from authBuddy. The `JwtDecoder` is built with a `RestTemplate` from Spring Boot's auto-configured, observed builder, so the fetch is a client span inside the request trace and sends `traceparent` to authBuddy.
+- Traced outgoing call: the JWKS fetch from authBuddy. The `JwtDecoder` is built with a `RestTemplate` that uses the application's observation registry, so the fetch is a client span inside the request trace and sends `traceparent` to authBuddy.
 - Every log line written inside a trace keeps Spring Boot's default console pattern and carries `[<traceId>-<spanId>]`; calendarBuddy sets no own `logging.pattern.console`.
 - Sampling probability 1.0 by default; operators lower it with `CALENDAR_API_TRACING_SAMPLING_PROBABILITY` in `.env`.
-- Health-check and scrape requests to `/actuator/**` are not exported as traces.
+- Health-check and scrape requests to `/actuator/**` are not exported as traces, including Spring Security's spans inside them.
 - Spans carry no tokens, e-mail addresses, appointment titles, notes, or request bodies; span names use route templates. OTLP metrics and log export stay off.
 - The export endpoint is set only in `docker-compose.yml`; an unreachable collector never affects the API.
 
@@ -32,6 +32,6 @@ The root change [`add-homebuddy-tracing`](https://github.com/RtCryo/homeBuddy/bl
 
 ## Impact
 
-- `calendar-api/pom.xml` (`spring-boot-starter-opentelemetry` and, if not yet present, Boot's REST client starter), `application.yml`, `SecurityConfig` (JWKS client), a span export filter for `/actuator/**`, tests.
+- `calendar-api/pom.xml` (`spring-boot-starter-opentelemetry`), `application.yml`, `SecurityConfig` (JWKS client), filters that keep `/actuator/**` out of the traces, tests.
 - `docker-compose.yml` (OTLP endpoint and sampling environment), `.env.example`, `docs/ARCHITECTURE.md`, `docs/README.md`.
 - No new network, port, or secret.
