@@ -13,6 +13,7 @@ import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.sun.net.httpserver.HttpServer;
+import io.micrometer.observation.ObservationRegistry;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -74,16 +75,45 @@ class HomeBuddyJwtDecoderTest {
         }
     }
 
+    @Test
+    @org.junit.jupiter.api.Timeout(
+            value = 20,
+            threadMode = org.junit.jupiter.api.Timeout.ThreadMode.SEPARATE_THREAD)
+    void jwksFetchGivesUpWhenAuthBuddyStopsAnswering() throws Exception {
+        try (java.net.ServerSocket silent =
+                new java.net.ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress())) {
+            // Accepts the connection (backlog) but never sends a response.
+            JwtDecoder decoder =
+                    SecurityConfig.homeBuddyDecoder(
+                            "http://127.0.0.1:" + silent.getLocalPort() + "/jwks",
+                            "homebuddy-auth",
+                            "calendarbuddy",
+                            ObservationRegistry.NOOP,
+                            java.time.Duration.ofMillis(500));
+            String token = token(key("silent"), "homebuddy-auth", "calendarbuddy");
+
+            long started = System.nanoTime();
+            assertThatThrownBy(() -> decoder.decode(token)).isInstanceOf(Exception.class);
+            assertThat(java.time.Duration.ofNanos(System.nanoTime() - started))
+                    .isLessThan(java.time.Duration.ofSeconds(10));
+        }
+    }
+
+    @Test
+    void jwksClientKeepsAFiniteTimeout() {
+        assertThat(SecurityConfig.JWKS_TIMEOUT).isEqualTo(java.time.Duration.ofSeconds(30));
+    }
+
     private RSAKey key(String kid) throws Exception {
         return new RSAKeyGenerator(2048).keyID(kid).generate();
     }
 
     private JwtDecoder decoder(HttpServer server) {
-        return new SecurityConfig()
-                .jwtDecoder(
-                        "http://127.0.0.1:" + server.getAddress().getPort() + "/jwks",
-                        "homebuddy-auth",
-                        "calendarbuddy");
+        return SecurityConfig.homeBuddyDecoder(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/jwks",
+                "homebuddy-auth",
+                "calendarbuddy",
+                ObservationRegistry.NOOP);
     }
 
     private HttpServer server(AtomicReference<JWKSet> published) throws Exception {
